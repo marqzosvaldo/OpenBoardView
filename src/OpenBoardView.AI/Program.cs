@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.Extensions.AI;
 using OpenBoardView.AI.Agent;
 using OpenBoardView.AI.Graph;
+using OpenBoardView.AI.Knowledge;
 using OpenBoardView.AI.Models;
 using OpenBoardView.AI.Parsers;
 using OpenBoardView.AI.Server;
@@ -71,6 +72,25 @@ builder.Services.AddSingleton<CircuitGraphBuilder>(sp =>
 
 // 2. Registrar Simulador, Maze Debugger, Contexto, Herramientas y Proveedor IChatClient con Microsoft.Extensions.AI (Fase 4-6)
 builder.Services.AddSingleton<CircuitSimulator>();
+
+// Base de conocimiento de flujos de diagnóstico (JSON). Solo se aplican los flujos de las familias que coinciden con la placa cargada.
+builder.Services.AddSingleton<FlowKnowledgeBase>(sp =>
+{
+    var graph = sp.GetRequiredService<CircuitGraphBuilder>();
+    var env = sp.GetRequiredService<IHostEnvironment>();
+
+    var dirs = new[]
+    {
+        Path.Combine(AppContext.BaseDirectory, "Knowledge"),
+        Path.GetFullPath(Path.Combine(env.ContentRootPath, "../../Boards/knowledge"))
+    };
+    var kb = FlowKnowledgeBase.LoadFromDirectories(dirs, graph.Topology.FileName);
+
+    Console.WriteLine($"[Conocimiento] Familias cargadas: {kb.Loaded.Count} | Aplicables a '{graph.Topology.FileName}': {kb.Applicable.Count}");
+    foreach (var err in kb.LoadErrors)
+        Console.WriteLine($"[Conocimiento] ⚠ No se pudo cargar {err}");
+    return kb;
+});
 builder.Services.AddSingleton<CircuitMazeDebugger>();
 builder.Services.AddScoped<DiagnosticsAgentContext>();
 builder.Services.AddScoped<BoardDiagnosticsTools>();

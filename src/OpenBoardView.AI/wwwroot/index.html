@@ -705,6 +705,9 @@
         <div><b>Transición:</b> <span style="color:#94a3b8">${step.inputNet}</span> ➔ <b style="color:#fef08a">${step.outputNet}</b></div>
         <div style="margin-top:4px; color:#cbd5e1;">🎯 <b>Medir:</b> ${step.pinToMeasure}</div>
         <div style="margin-top:4px; color:#94a3b8; font-size:11px;">💡 ${step.howItWorks}</div>
+        ${step.dataSource === 'inferred' ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.15); border:1px solid #f59e0b; border-radius:4px; color:#fde68a; font-size:10.5px;">⚠ <b>Voltaje estimado</b> a partir del nombre de la red (no leído del esquemático). Verifícalo en el PDF antes de concluir.</div>` : `<div style="margin-top:4px; color:#64748b; font-size:10px;">📘 Dato curado por experto (esquemático)</div>`}
+        ${step.componentFound === false ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:4px; color:#fecaca; font-size:10.5px;">⚠ <b>${step.componentId}</b> no existe en la placa cargada; la posición mostrada es aproximada.</div>` : ''}
+        ${(activeMazeTrace.warnings && activeMazeTrace.warnings.length && step.stepNumber === 1) ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.12); border:1px solid #92400e; border-radius:4px; color:#fcd34d; font-size:10.5px;">ℹ ${activeMazeTrace.warnings[0]}</div>` : ''}
         ${blockedStep === step.stepNumber ? `<div style="margin-top:6px; padding:5px; background:rgba(239,68,68,0.18); border:1px solid #ef4444; border-radius:4px; color:#fecaca; font-size:11px;"><b>🛑 Diagnóstico de Bloqueo:</b> ${step.failDiagnosis}</div>` : ''}
       `;
 

@@ -1,0 +1,199 @@
+{
+  "family": "apple-820-3115-b",
+  "description": "Flujos de diagnostico curados a mano para MacBook Pro 13 A1278 (820-3115-B). Los voltajes marcados como 'curated' fueron escritos por el autor a partir del esquematico; NO se verifican automaticamente contra el PDF.",
+  "boardMatch": [ "820-3115" ],
+  "flows": [
+    {
+      "id": "backlight",
+      "title": "Laberinto de Backlight (Retroiluminación LCD)",
+      "symptom": "La laptop enciende y da imagen al fondo, pero la pantalla está oscura (sin voltaje en LEDs).",
+      "keywords": [ "backlight", "brillo", "imagen", "pantalla", "lcd", "f9700", "u9701" ],
+      "steps": [
+        {
+          "component": "F9700", "stage": "1. Fusible de Backlight (3A)",
+          "inputNet": "PPBUS_G3H", "outputNet": "PPBUS_S0_LCDBKLT_FUSED",
+          "expectedVoltage": 12.56, "voltageSource": "curated",
+          "pinToMeasure": "Ambos lados de F9700 (Cuadrante Q1)",
+          "howItWorks": "Toma los 12.56V de PPBUS_G3H para alimentar la etapa elevadora (Boost) de pantalla.",
+          "failDiagnosis": "Fusible F9700 abierto por corto en la salida o cable LVDS dañado."
+        },
+        {
+          "component": "Q9706", "stage": "2. MOSFET de Paso de Backlight",
+          "inputNet": "PPBUS_S0_LCDBKLT_FUSED", "outputNet": "PPBUS_SW_LCDBKLT_PWR",
+          "expectedVoltage": 12.56, "voltageSource": "curated",
+          "pinToMeasure": "Pines de salida 1,2,5,6 de Q9706",
+          "howItWorks": "Se abre cuando BKLT_PLT_RST_L y LCD_BKLT_EN habilitan el divisor R9788/R9789.",
+          "failDiagnosis": "Si el Gate tiene 12.5V en vez de ~5V, Q9707 no está activando el divisor."
+        },
+        {
+          "component": "L9701", "stage": "3. Bobina Boost de Backlight",
+          "inputNet": "PPBUS_SW_LCDBKLT_PWR", "outputNet": "PPBUS_SW_LCDBKLT_PWR_SW",
+          "expectedVoltage": 12.56, "voltageSource": "curated",
+          "pinToMeasure": "Bobina L9701",
+          "howItWorks": "Acumula energía para elevar los 12.5V hasta ~28V-40V.",
+          "failDiagnosis": "Bobina abierta o pista sulfatada entre L9701 y D9701."
+        },
+        {
+          "component": "D9701", "stage": "4. Diodo Rectificador Schottky Boost",
+          "inputNet": "PPBUS_SW_LCDBKLT_PWR_SW", "outputNet": "PPVOUT_SW_LCDBKLT",
+          "expectedVoltage": 28.5, "voltageSource": "curated",
+          "pinToMeasure": "Cátodo de D9701",
+          "howItWorks": "Rectifica los pulsos de alta tensión hacia los LEDs de la pantalla.",
+          "failDiagnosis": "Si mide 12.5V en vez de ~28V, el driver U9701 no está haciendo switching."
+        },
+        {
+          "component": "U9701", "stage": "5. Driver LED LP8550 (Control I2C y Retorno)",
+          "inputNet": "PPVOUT_SW_LCDBKLT", "outputNet": "PPVOUT_SW_LCDBKLT_FB",
+          "expectedVoltage": 28.5, "voltageSource": "curated",
+          "pinToMeasure": "Bola A5 (FB) y resistencias de retorno",
+          "howItWorks": "Regula el brillo por PWM/I2C y cierra el retorno de las tiras LED.",
+          "failDiagnosis": "Pista de Feedback (bola A5 de U9701) comida por humedad o U9701 dañado."
+        },
+        {
+          "component": "J9000", "stage": "6. Conector de Pantalla LVDS (Pines 38-40)",
+          "inputNet": "PPVOUT_SW_LCDBKLT", "outputNet": "LED_RETURN_1",
+          "expectedVoltage": 28.5, "voltageSource": "curated",
+          "pinToMeasure": "Pines 38, 39 y 40 de J9000",
+          "howItWorks": "Entrega los ~28V a la pantalla LCD.",
+          "failDiagnosis": "Pines 38-40 carbonizados en el conector J9000 o fusible L9080 abierto."
+        }
+      ]
+    },
+    {
+      "id": "magsafe-green-light",
+      "title": "Laberinto One-Wire & Luz Verde MagSafe (PP3V42_G3H)",
+      "symptom": "El cargador MagSafe no enciende luz verde/naranja y el SMC no despierta.",
+      "keywords": [ "magsafe", "verde", "3v42", "onewire", "u6990", "u6900" ],
+      "steps": [
+        {
+          "component": "J6900", "stage": "1. Entrada MagSafe (DC-In)",
+          "inputNet": "PP18V5_DCIN_FUSE", "outputNet": "PPDCIN_G3H",
+          "expectedVoltage": 16.5, "voltageSource": "curated",
+          "pinToMeasure": "Pin 1/2 de J6900",
+          "howItWorks": "Ingresa tensión del adaptador MagSafe.",
+          "failDiagnosis": "Revisar conector MagSafe o F6905."
+        },
+        {
+          "component": "D6990", "stage": "2. Diodo Dual Alimentación 3V42",
+          "inputNet": "PPDCIN_G3H", "outputNet": "PPVIN_G3H_P3V42G3H",
+          "expectedVoltage": 16.2, "voltageSource": "curated",
+          "pinToMeasure": "Salida de D6990 / R6990",
+          "howItWorks": "Selecciona entre el cargador o la batería para alimentar el regulador de 3.42V.",
+          "failDiagnosis": "R6990 (4.7Ω) quemada o D6990 abierto."
+        },
+        {
+          "component": "U6990", "stage": "3. Regulador Switching 3.42V (LT3470A)",
+          "inputNet": "PPVIN_G3H_P3V42G3H", "outputNet": "PP3V42_G3H",
+          "expectedVoltage": 3.42, "voltageSource": "curated",
+          "pinToMeasure": "Bobina L6995",
+          "howItWorks": "Genera los 3.42V indispensables para el SMC y el circuito One-Wire.",
+          "failDiagnosis": "Corto en PP3V42_G3H o U6990 dañado."
+        },
+        {
+          "component": "U7000", "stage": "4. Señal ACOK del Charger (ISL6259)",
+          "inputNet": "PPDCIN_G3H", "outputNet": "SMC_BC_ACOK",
+          "expectedVoltage": 3.3, "voltageSource": "curated",
+          "pinToMeasure": "Pin 14 de U7000",
+          "howItWorks": "Indica que el adaptador AC es válido.",
+          "failDiagnosis": "U7000 no recibe DCIN (R7005) o ACIN (R7010)."
+        },
+        {
+          "component": "U4900", "stage": "5. Controlador SMC (System Management Controller)",
+          "inputNet": "PP3V42_G3H", "outputNet": "SYS_ONEWIRE",
+          "expectedVoltage": 3.42, "voltageSource": "curated",
+          "pinToMeasure": "Línea SYS_ONEWIRE",
+          "howItWorks": "El SMC despierta con 3.42V y envía el protocolo serie One-Wire hacia el cargador.",
+          "failDiagnosis": "SMC con sulfato, sin SMC_RESET_L (U5010) o dañado."
+        },
+        {
+          "component": "U6900", "stage": "6. Compuerta Buffer One-Wire hacia MagSafe",
+          "inputNet": "SYS_ONEWIRE", "outputNet": "ADAPTER_SENSE",
+          "expectedVoltage": 3.42, "voltageSource": "curated",
+          "pinToMeasure": "Pin 5 de U6900 -> Pin 5 de J6900",
+          "howItWorks": "Transmite los datos One-Wire al pin central del MagSafe para encender el LED verde/naranja.",
+          "failDiagnosis": "U6900 o U6901 dañados por sobretensión en el pin central del MagSafe."
+        }
+      ]
+    },
+    {
+      "id": "charging-ppbus",
+      "title": "Laberinto de Carga y Generación de PPBUS_G3H (No Carga / No Enciende)",
+      "symptom": "Seguimiento paso a paso desde el conector MagSafe (16.5V), pasando por U7000 (ISL6259) y F7040 hasta la batería.",
+      "keywords": [ "carga", "bateria", "batería", "enciende", "ppbus", "u7000", "f7040" ],
+      "steps": [
+        {
+          "component": "J6900", "stage": "1. Entrada DC-In (Conector MagSafe)",
+          "inputNet": "ADAPTER_SENSE", "outputNet": "PP18V5_DCIN_FUSE",
+          "expectedVoltage": 16.5, "voltageSource": "curated",
+          "pinToMeasure": "Pines 1 y 2 de J6900",
+          "howItWorks": "Recibe los 16.5V del cargador MagSafe original y los entrega a la placa.",
+          "failDiagnosis": "Conector MagSafe sucio/quemado o cargador defectuoso. Reemplazar DC-In board."
+        },
+        {
+          "component": "F6905", "stage": "2. Fusible Principal de Entrada DC",
+          "inputNet": "PP18V5_DCIN_FUSE", "outputNet": "PPDCIN_G3H",
+          "expectedVoltage": 16.5, "voltageSource": "curated",
+          "pinToMeasure": "Ambos extremos de F6905 (6A)",
+          "howItWorks": "Protege la placa contra sobretensiones en la línea de entrada de 16.5V.",
+          "failDiagnosis": "Fusible F6905 abierto. Antes de reemplazarlo, mide continuidad a tierra en PPDCIN_G3H para descartar corto en Q7080/U7000."
+        },
+        {
+          "component": "U6990", "stage": "3. Regulador Siempre-Activo 3.42V (G3Hot)",
+          "inputNet": "PPDCIN_G3H", "outputNet": "PP3V42_G3H",
+          "expectedVoltage": 3.42, "voltageSource": "curated",
+          "pinToMeasure": "Pin 4 (VIN) y Bobina L6995 (3.42V)",
+          "howItWorks": "Convierte los 16.5V del cargador en 3.42V para alimentar al SMC (U4900) y al circuito de luz verde.",
+          "failDiagnosis": "Sin 3.42V el SMC está muerto y nunca habrá carga ni luz en MagSafe. Revisar D6990, R6990, U6990 o corto en PP3V42_G3H."
+        },
+        {
+          "component": "R7005", "stage": "4. Alimentación VCC al Charger IC (ISL6259)",
+          "inputNet": "PPDCIN_G3H", "outputNet": "PPCHGR_DCIN",
+          "expectedVoltage": 16.5, "voltageSource": "curated",
+          "pinToMeasure": "Resistencia R7005 (20 Ω) hacia Pin 2 de U7000",
+          "howItWorks": "Alimenta el pin DCIN (Pin 2) del integrado cargador U7000 a través de la resistencia fusible R7005.",
+          "failDiagnosis": "R7005 abierta o desvalorizada (suele quemarse cuando C7005 o U7000 entran en corto)."
+        },
+        {
+          "component": "U7000", "stage": "5. Detección de Cargador (ACIN & SMC_BC_ACOK)",
+          "inputNet": "CHGR_ACIN", "outputNet": "SMC_BC_ACOK",
+          "expectedVoltage": 3.3, "voltageSource": "curated",
+          "pinToMeasure": "Pin 3 (ACIN > 3.9V) y Pin 14 (ACOK = 3.3V)",
+          "howItWorks": "U7000 verifica el divisor resistivo R7010/R7011 en ACIN; si es ~4V, levanta SMC_BC_ACOK para encender el MagSafe y avisar al SMC.",
+          "failDiagnosis": "Divisor R7010/R7011 alterado o U7000 dañado. Sin ACOK no se habilita el circuito de carga."
+        },
+        {
+          "component": "R7020", "stage": "6. Sensado de Corriente de Entrada (CSI_P / CSI_N)",
+          "inputNet": "PPDCIN_G3H_INRUSH", "outputNet": "PPDCIN_G3H_CHGR",
+          "expectedVoltage": 16.5, "voltageSource": "curated",
+          "pinToMeasure": "Pines 27 y 28 de U7000 (lazo R7020 0.02Ω)",
+          "howItWorks": "U7000 mide cuánta corriente consume la placa del cargador mediante las resistencias R7021/R7022 hacia los pines 27/28.",
+          "failDiagnosis": "Si R7021 o R7022 se abren, U7000 cree que hay sobrecorriente y apaga inmediatamente la generación de PPBUS_G3H."
+        },
+        {
+          "component": "L7030", "stage": "7. Bobina Buck Converter de Carga",
+          "inputNet": "CHGR_PHASE", "outputNet": "PPVBAT_G3H_CHGR_REG",
+          "expectedVoltage": 12.56, "voltageSource": "curated",
+          "pinToMeasure": "Bobina L7030 y Resistencia Shunt R7050",
+          "howItWorks": "Los MOSFETs Q7030/Q7035 conmutados por U7000 reducen los 16.5V a 12.56V regulados (8.4V si el SMC no está comunicando).",
+          "failDiagnosis": "Si aquí hay 0V o <3V: revisar Q7030/Q7035 en corto, R7051/R7052 (lazo CSOP/CSON pines 17/18 de U7000) o corto después de F7040."
+        },
+        {
+          "component": "F7040", "stage": "8. Fusible Maestro del Sistema (PPBUS_G3H)",
+          "inputNet": "PPVBAT_G3H_CHGR_REG", "outputNet": "PPBUS_G3H",
+          "expectedVoltage": 12.56, "voltageSource": "curated",
+          "pinToMeasure": "Pines 1 y 2 de F7040 (8A)",
+          "howItWorks": "Une la salida del cargador con el riel principal PPBUS_G3H que alimenta toda la placa y la etapa de batería.",
+          "failDiagnosis": "Si hay 12.56V en el Pin 1 pero 0V en el Pin 2, F7040 está abierto por un corto en PPBUS_G3H (Cuadrantes Q1/Q2)."
+        },
+        {
+          "component": "Q7055", "stage": "9. MOSFET de Paso hacia la Batería & SMBus",
+          "inputNet": "PPBUS_G3H", "outputNet": "PPVBAT_G3H_CONN",
+          "expectedVoltage": 12.56, "voltageSource": "curated",
+          "pinToMeasure": "Conector de Batería J6950 (Pines 1-3 y SCL/SDA Pines 4-6)",
+          "howItWorks": "El SMC conversa con la batería por SMBus (R5280/R5281); si la reconoce, U7000 abre Q7055 para inyectar corriente de carga.",
+          "failDiagnosis": "Si PPBUS_G3H tiene 12.56V pero no carga: si mide 12.23V el SMC no lee la batería (revisar R5280/R5281, D6950 o ISL6259). Si mide 12.56V, probar otra batería o Q7055."
+        }
+      ]
+    }
+  ]
+}
