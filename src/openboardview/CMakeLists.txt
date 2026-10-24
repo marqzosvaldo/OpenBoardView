@@ -110,6 +110,7 @@ set(SOURCES
 	GUI/widgets.cpp
 	PDFBridge/PDFBridge.cpp
 	PDFBridge/PDFFile.cpp
+	AI/ObvAiBridge.cpp
 	main_opengl.cpp
 )
 

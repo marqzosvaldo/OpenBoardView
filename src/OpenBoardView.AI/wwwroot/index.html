@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenBoardView AI — Simulador de Corriente, Cámara Térmica y Diagnóstico (.NET 10)</title>
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-panel: #111827;
+      --bg-card: #1e293b;
+      --border: #334155;
+      --accent: #38bdf8;
+      --accent-green: #22c55e;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    header {
+      height: 54px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .badge {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button {
+      background: var(--bg-card);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      padding: 6px 11px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    button:hover { border-color: var(--accent); color: var(--accent); }
+    button.active {
+      background: rgba(56, 189, 248, 0.22);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    button.thermal-btn.active {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: #ef4444;
+      color: #fca5a5;
+    }
+    .ws-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+    }
+    .workspace {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 460px;
+      min-height: 0;
+    }
+    .board-container {
+      position: relative;
+      background: #060911;
+      overflow: hidden;
+    }
+    #boardCanvas {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      display: block;
+    }
+    #boardCanvas:active { cursor: grabbing; }
+
+    /* Fuente de Laboratorio Flotante (PSU Bench) */
+    .psu-bench {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(17, 24, 39, 0.92);
+      backdrop-filter: blur(10px);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      width: 350px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+    .psu-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .psu-displays {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      background: #05080f;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 8px;
+      margin-bottom: 10px;
+      text-align: center;
+      font-family: "SF Mono", Consolas, monospace;
+    }
+    .lcd-val { font-size: 17px; font-weight: 700; }
+    .lcd-lbl { font-size: 10px; color: var(--text-muted); }
+    .psu-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      font-size: 12px;
+    }
+    .psu-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    .psu-row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .psu-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+    .btn-sim-fire {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: #ef4444;
+      color: #fca5a5;
+      font-weight: 600;
+    }
+    .btn-lift {
+      background: rgba(245, 158, 11, 0.2);
+      border-color: #f59e0b;
+      color: #fde68a;
+      font-weight: 600;
+    }
+
+    /* Panel Flotante Circuit Step Debugger (Modo Laberinto Paso a Paso) */
+    .maze-debugger {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(17, 24, 39, 0.94);
+      backdrop-filter: blur(10px);
+      border: 1px solid #38bdf8;
+      border-radius: 10px;
+      padding: 12px 14px;
+      width: 390px;
+      box-shadow: 0 10px 28px rgba(0,0,0,0.65);
+    }
+    .maze-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #38bdf8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .maze-step-box {
+      background: #05080f;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 9px 10px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .maze-controls {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .btn-breakpoint {
+      background: rgba(239, 68, 68, 0.22);
+      border-color: #ef4444;
+      color: #fca5a5;
+      font-weight: 700;
+    }
+
+    .hud-toast {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      right: 16px;
+      background: rgba(17, 24, 39, 0.94);
+      border: 1px solid var(--accent-amber);
+      color: #fde68a;
+      padding: 11px 15px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .side-panel {
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .inspector-card {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(30, 41, 59, 0.55);
+      font-size: 12px;
+    }
+    .inspector-card h4 {
+      color: var(--accent);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .chat-history {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .msg {
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      word-wrap: break-word;
+    }
+    .msg.user {
+      background: rgba(56, 189, 248, 0.16);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      align-self: flex-end;
+      max-width: 88%;
+    }
+    .msg.assistant {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      align-self: flex-start;
+      width: 100%;
+    }
+    .tool-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-bottom: 8px;
+    }
+    .tool-pill {
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid rgba(34, 197, 94, 0.4);
+      color: #86efac;
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-family: monospace;
+    }
+    .quick-prompts {
+      padding: 8px 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .quick-prompts button {
+      font-size: 11px;
+      padding: 5px 9px;
+      background: rgba(56, 189, 248, 0.08);
+    }
+    .chat-input-bar {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+    .chat-input-bar input {
+      flex: 1;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 9px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      outline: none;
+    }
+    .chat-input-bar input:focus { border-color: var(--accent); }
+    .btn-send {
+      background: var(--accent);
+      color: #061320;
+      font-weight: 700;
+      border: none;
+      padding: 0 16px;
+    }
+    .search-box {
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      width: 155px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span>OpenBoardView AI</span>
+      <span class="badge">.NET 10 + Simulador DC & Térmico</span>
+      <span id="boardTitle" style="color: var(--text-muted); font-weight: 400; font-size: 12px;">Cargando...</span>
+    </div>
+    <div class="toolbar">
+      <input type="text" id="compSearchInput" list="allBoardSearchList" class="search-box" placeholder="Comp o Red (ej. F7040)" onchange="searchFromInput()" />
+      <datalist id="allBoardSearchList"></datalist>
+      <button onclick="searchFromInput()">Ir</button>
+      <button id="btnSideTop" onclick="setSide('Top')">TOP</button>
+      <button id="btnSideBottom" onclick="setSide('Bottom')">BOTTOM</button>
+      <button id="btnSideBoth" class="active" onclick="setSide('ALL')">Ambas</button>
+      <button id="btnQuadrants" class="active" onclick="toggleQuadrants()">Cuadrantes</button>
+      <button id="btnThermalView" class="thermal-btn active" onclick="toggleThermalOverlay()">🌡 Cámara Térmica IR</button>
+      <button onclick="resetView()">Centrar</button>
+    </div>
+    <div class="ws-status">
+      <span class="dot" id="wsDot"></span>
+      <span id="wsLabel">WebSocket Activo</span>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <div class="board-container">
+      <canvas id="boardCanvas"></canvas>
+
+      <!-- Fuente de Laboratorio DC & Control de Simulación en Vivo -->
+      <div class="psu-bench">
+        <div class="psu-header">
+          <span>⚡ Fuente de Inyección DC & Flujo</span>
+          <span id="simStatusBadge" style="color:#94a3b8;">EN ESPERA</span>
+        </div>
+        <div class="psu-displays">
+          <div>
+            <div class="lcd-val" id="lcdVolt" style="color:#38bdf8;">12.56 V</div>
+            <div class="lcd-lbl">VOLTAJE LÍNEA</div>
+          </div>
+          <div>
+            <div class="lcd-val" id="lcdAmp" style="color:#ef4444;">0.00 A</div>
+            <div class="lcd-lbl">CORRIENTE DC</div>
+          </div>
+          <div>
+            <div class="lcd-val" id="lcdTemp" style="color:#f59e0b;">25.0 °C</div>
+            <div class="lcd-lbl">PICO TÉRMICO IR</div>
+          </div>
+        </div>
+        <div class="psu-controls">
+          <div class="psu-row">
+            <span>Línea (<span id="lblNetCount">2361</span>):</span>
+            <input type="text" id="simNetSelect" list="allBoardNetsList" value="PPBUS_G3H"
+                   placeholder="Busca cualquiera de las 2,361 líneas..."
+                   onchange="onSimNetChanged(this.value)"
+                   style="flex:1; background:#090d16; color:#38bdf8; font-weight:600; border:1px solid #334155; padding:5px 8px; border-radius:4px; font-size:12px;" />
+            <datalist id="allBoardNetsList"></datalist>
+          </div>
+          <div class="psu-row">
+            <span>Inyectar V: <b id="lblInjV">1.5 V</b></span>
+            <input type="range" id="rngInjV" min="0.5" max="12.6" step="0.1" value="1.5" oninput="document.getElementById('lblInjV').textContent=this.value+' V'" />
+          </div>
+          <div class="psu-row">
+            <span>Límite I: <b id="lblLimA">2.5 A</b></span>
+            <input type="range" id="rngLimA" min="0.5" max="5.0" step="0.1" value="2.5" oninput="document.getElementById('lblLimA').textContent=this.value+' A'" />
+          </div>
+          <div class="psu-actions">
+            <button class="btn-sim-fire" onclick="triggerManualSimulation(false)">🔥 Simular Corto + Flujo</button>
+            <button class="btn-lift" id="btnLiftF7040" onclick="toggleLiftFuse('F7040')">🔧 Levantar F7040</button>
+            <button onclick="clearSimulation()">Limpiar</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-toast" id="wsToast">
+        <span id="wsToastText"></span>
+        <button onclick="document.getElementById('wsToast').style.display='none'">OK</button>
+      </div>
+
+      <!-- NUEVA FUNCIONALIDAD ADITIVA: Circuit Step Debugger (Modo Laberinto Paso a Paso) -->
+      <div class="maze-debugger" id="mazeDebuggerPanel">
+        <div class="maze-header">
+          <span>🧭 Circuit Step Debugger (Laberinto)</span>
+          <span id="mazeStepCounter" style="color:#fef08a;">LISTO</span>
+        </div>
+        <div class="psu-row" style="margin-bottom:8px;">
+          <select id="mazePresetSelect" onchange="startMazeDebugger(this.value, 1, null)"
+                  style="flex:1; background:#090d16; color:#38bdf8; font-weight:600; border:1px solid #334155; padding:5px 8px; border-radius:4px; font-size:12px;">
+            <option value="no carga">🔋 Síntoma: Mi laptop NO carga / PPBUS_G3H (9 pasos)</option>
+            <option value="sin luz magsafe">💡 Síntoma: Sin Luz Verde en MagSafe / 3V42 (6 pasos)</option>
+            <option value="sin backlight">🖥 Síntoma: Pantalla Oscura / Sin Backlight (6 pasos)</option>
+          </select>
+          <button onclick="startMazeDebugger(document.getElementById('mazePresetSelect').value, 1, null)">Iniciar</button>
+        </div>
+
+        <div class="maze-step-box" id="mazeStepDetails">
+          Selecciona un síntoma y presiona <b>Iniciar</b> o <b>Siguiente (F10)</b> para recorrer el circuito paso a paso como un laberinto siguiendo la línea de voltaje.
+        </div>
+
+        <div class="maze-controls">
+          <button onclick="mazeFirstStep()" title="Ir al Paso 1">⏮</button>
+          <button onclick="mazePrevStep()" title="Paso Anterior">⏪ Ant</button>
+          <button id="btnMazePlay" onclick="toggleMazeAutoPlay()">▶️ Play</button>
+          <button onclick="mazeNextStep()" style="border-color:#22c55e; color:#86efac; font-weight:700;" title="Sí hay voltaje -> Avanzar al siguiente nodo">✅ Hay Voltaje (Sig ⏩)</button>
+          <button class="btn-breakpoint" onclick="mazeMarkFaultHere()" title="Aquí se cae a 0V -> Marcar Muro/Falla">🛑 0V Aquí (Falla)</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="inspector-card" id="inspectorCard">
+        <h4>Inspector Eléctrico y Térmico (Click en Componente)</h4>
+        <div id="inspectorBody" style="color: var(--text-muted);">
+          Haz clic en cualquier componente para ver sus pines, levantar/soldar puentes o simular un corto directo a tierra en él.
+        </div>
+      </div>
+
+      <div class="chat-history" id="chatHistory">
+        <div class="msg assistant">
+          <strong>Simulador Eléctrico y Agente IA (.NET 10) Activo.</strong><br/>
+          Ahora puedes ver visualmente el <b>flujo animado de electrones</b> por la placa, la <b>caída de voltaje</b> por Ley de Ohm, qué ocurre al <b>levantar fusibles (`F7040`)</b> y el <b>mapa de calor infrarrojo (Cámara Térmica)</b>.<br/><br/>
+          Usa los botones rápidos de abajo o pídele al agente que simule cualquier falla.
+        </div>
+      </div>
+
+      <div class="quick-prompts">
+        <button onclick="sendQuickPrompt('Mi laptop no carga. Inicia el debugger paso a paso como laberinto para rastrear la línea desde el MagSafe hasta la batería.')">🧭 Debugger: No Carga</button>
+        <button onclick="sendQuickPrompt('Simula un corto a tierra en PPBUS_G3H en el capacitor C7513 inyectando 1.5V a 2.5A y muéstrame el flujo de corriente y la cámara térmica.')">🔥 Simular Corto PPBUS_G3H</button>
+        <button onclick="sendQuickPrompt('Simula qué pasa en PPBUS_G3H si levanto el fusible F7040 cuando C7513 está en corto.')">🔧 Simular Levantar F7040</button>
+        <button onclick="sendQuickPrompt('No tengo luz verde en el MagSafe. Inicia el debugger paso a paso del circuito One-Wire y 3V42.')">💡 Debugger: MagSafe</button>
+      </div>
+
+      <div class="chat-input-bar">
+        <input type="text" id="chatInput" placeholder="Ej: Simula un corto en PPBUS_G3H e inyecta 2V..." onkeydown="if(event.key==='Enter') sendChat()" />
+        <button class="btn-send" onclick="sendChat()">Simular con IA</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let boardData = null;
+    let currentSide = 'ALL';
+    let showQuadrants = true;
+    let showThermalOverlay = true;
+    let highlightedCompId = null;
+    let highlightedNet = null;
+    let activeSimulation = null;
+    let activeMazeTrace = null;
+    let mazeAutoPlayTimer = null;
+    let liftedComponents = new Set();
+    let selectedFaultCompId = null;
+    let animPhase = 0;
+
+    let cam = { x: 0, y: 0, zoom: 0.14 };
+    let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
+
+    const canvas = document.getElementById('boardCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = canvas.parentElement.clientWidth;
+      canvas.height = canvas.parentElement.clientHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    async function loadBoardGeometry() {
+      const res = await fetch('/api/board/geometry');
+      boardData = await res.json();
+      document.getElementById('boardTitle').textContent = `${boardData.fileName} (${boardData.components.length} comps | ${boardData.nets ? boardData.nets.length : 0} redes)`;
+
+      if (boardData.nets) {
+        document.getElementById('lblNetCount').textContent = boardData.nets.length;
+        const netListEl = document.getElementById('allBoardNetsList');
+        netListEl.innerHTML = boardData.nets
+          .map(n => `<option value="${n.name}">${n.nominalV}V • ${n.pinCount} pines</option>`)
+          .join('');
+      }
+
+      const searchListEl = document.getElementById('allBoardSearchList');
+      if (searchListEl) {
+        const compOpts = boardData.components.map(c => `<option value="${c.id}">Componente ${c.category} (${c.quadrant} - ${c.side})</option>`);
+        const netOpts = (boardData.nets || []).map(n => `<option value="${n.name}">Red (${n.pinCount} pines)</option>`);
+        searchListEl.innerHTML = compOpts.concat(netOpts).join('');
+      }
+
+      resetView();
+      requestAnimationFrame(animateLoop);
+    }
+
+    function onSimNetChanged(val) {
+      if (!val || !boardData) return;
+      const clean = val.trim().toUpperCase();
+      highlightedNet = clean;
+      if (boardData.nets) {
+        const found = boardData.nets.find(n => n.name.toUpperCase() === clean);
+        if (found) {
+          document.getElementById('lcdVolt').textContent = `${found.nominalV.toFixed(2)} V`;
+        }
+      }
+    }
+
+    function animateLoop() {
+      animPhase = (animPhase + 0.025) % 1.0;
+      drawBoard();
+      requestAnimationFrame(animateLoop);
+    }
+
+    function resetView() {
+      if (!boardData) return;
+      resizeCanvas();
+      const bb = boardData.boundingBox;
+      const scaleX = (canvas.width - 80) / bb.width;
+      const scaleY = (canvas.height - 80) / bb.height;
+      cam.zoom = Math.min(scaleX, scaleY);
+      cam.x = canvas.width / 2 - bb.midX * cam.zoom;
+      cam.y = canvas.height / 2 + bb.midY * cam.zoom;
+    }
+
+    function boardToScreen(bx, by) {
+      return { x: cam.x + bx * cam.zoom, y: cam.y - by * cam.zoom };
+    }
+
+    function screenToBoard(sx, sy) {
+      return { x: (sx - cam.x) / cam.zoom, y: (cam.y - sy) / cam.zoom };
+    }
+
+    function setSide(side) {
+      currentSide = side;
+      document.getElementById('btnSideTop').classList.toggle('active', side === 'Top');
+      document.getElementById('btnSideBottom').classList.toggle('active', side === 'Bottom');
+      document.getElementById('btnSideBoth').classList.toggle('active', side === 'ALL');
+    }
+
+    function toggleQuadrants() {
+      showQuadrants = !showQuadrants;
+      document.getElementById('btnQuadrants').classList.toggle('active', showQuadrants);
+    }
+
+    function toggleThermalOverlay() {
+      showThermalOverlay = !showThermalOverlay;
+      document.getElementById('btnThermalView').classList.toggle('active', showThermalOverlay);
+    }
+
+    async function triggerManualSimulation(keepComp) {
+      const netName = document.getElementById('simNetSelect').value;
+      const injectedVoltage = parseFloat(document.getElementById('rngInjV').value);
+      const currentLimitAmps = parseFloat(document.getElementById('rngLimA').value);
+
+      const payload = {
+        netName,
+        faultedComponentId: keepComp ? selectedFaultCompId : null,
+        liftedComponentIds: Array.from(liftedComponents),
+        injectedVoltage,
+        currentLimitAmps
+      };
+
+      const res = await fetch('/api/board/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const sim = await res.json();
+      applySimulationResult(sim);
+    }
+
+    async function toggleLiftFuse(compId) {
+      const id = compId.toUpperCase();
+      if (liftedComponents.has(id)) {
+        liftedComponents.delete(id);
+      } else {
+        liftedComponents.add(id);
+      }
+      const btn = document.getElementById('btnLiftF7040');
+      if (btn && id === 'F7040') {
+        btn.textContent = liftedComponents.has('F7040') ? '✅ F7040 Levantado (Resoldar)' : '🔧 Levantar F7040';
+      }
+      await triggerManualSimulation(true);
+    }
+
+    async function simulateFaultOnComp(compId, netName) {
+      selectedFaultCompId = compId;
+      if (netName && netName !== 'GND') {
+        document.getElementById('simNetSelect').value = netName;
+      }
+      await triggerManualSimulation(true);
+    }
+
+    function clearSimulation() {
+      activeSimulation = null;
+      activeMazeTrace = null;
+      if (mazeAutoPlayTimer) { clearInterval(mazeAutoPlayTimer); mazeAutoPlayTimer = null; }
+      highlightedNet = null;
+      liftedComponents.clear();
+      selectedFaultCompId = null;
+      document.getElementById('btnLiftF7040').textContent = '🔧 Levantar F7040';
+      document.getElementById('simStatusBadge').textContent = 'EN ESPERA';
+      document.getElementById('simStatusBadge').style.color = '#94a3b8';
+      document.getElementById('lcdVolt').textContent = '12.56 V';
+      document.getElementById('lcdAmp').textContent = '0.00 A';
+      document.getElementById('lcdTemp').textContent = '25.0 °C';
+      document.getElementById('wsToast').style.display = 'none';
+    }
+
+    async function startMazeDebugger(queryOrSymptom, activeStepNumber = 1, blockedAtStepNumber = null) {
+      const res = await fetch('/api/board/debugger/trace', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ queryOrSymptom, activeStepNumber, blockedAtStepNumber })
+      });
+      const trace = await res.json();
+      applyMazeTrace(trace);
+    }
+
+    function applyMazeTrace(trace) {
+      if (!trace || !trace.steps || trace.steps.length === 0) return;
+      activeMazeTrace = trace;
+      renderMazeStepUI();
+    }
+
+    function renderMazeStepUI() {
+      if (!activeMazeTrace) return;
+      const steps = activeMazeTrace.steps;
+      const currIdx = Math.min(Math.max(1, activeMazeTrace.currentStepNumber), steps.length);
+      const step = steps.find(s => s.stepNumber === currIdx) || steps[0];
+      const blockedStep = activeMazeTrace.blockedAtStepNumber;
+
+      // Actualizar estado de cada paso localmente al navegar con los botones
+      for (const s of steps) {
+        if (blockedStep) {
+          if (s.stepNumber < blockedStep) s.status = 'PASSED';
+          else if (s.stepNumber === blockedStep) s.status = 'BLOCKED_FAULT';
+          else s.status = 'PENDING';
+        } else {
+          if (s.stepNumber < currIdx) s.status = 'PASSED';
+          else if (s.stepNumber === currIdx) s.status = 'ACTIVE_STEP';
+          else s.status = 'PENDING';
+        }
+      }
+
+      document.getElementById('mazeStepCounter').textContent = blockedStep
+        ? `🛑 BLOQUEO PASO ${blockedStep}/${steps.length}`
+        : `PASO ${currIdx} DE ${steps.length}`;
+
+      document.getElementById('mazeStepDetails').innerHTML = `
+        <div style="font-weight:700; color:${blockedStep === step.stepNumber ? '#ef4444' : '#38bdf8'}; margin-bottom:3px;">
+          ${step.stageTitle}
+        </div>
+        <div><b>Comp:</b> <code>${step.componentId}</code> (${step.quadrant} • ${step.side}) | <b>Esperado:</b> <b style="color:#4ade80">${step.expectedVoltage.toFixed(2)} V</b></div>
+        <div><b>Transición:</b> <span style="color:#94a3b8">${step.inputNet}</span> ➔ <b style="color:#fef08a">${step.outputNet}</b></div>
+        <div style="margin-top:4px; color:#cbd5e1;">🎯 <b>Medir:</b> ${step.pinToMeasure}</div>
+        <div style="margin-top:4px; color:#94a3b8; font-size:11px;">💡 ${step.howItWorks}</div>
+        ${blockedStep === step.stepNumber ? `<div style="margin-top:6px; padding:5px; background:rgba(239,68,68,0.18); border:1px solid #ef4444; border-radius:4px; color:#fecaca; font-size:11px;"><b>🛑 Diagnóstico de Bloqueo:</b> ${step.failDiagnosis}</div>` : ''}
+      `;
+
+      document.getElementById('lcdVolt').textContent = `${blockedStep === step.stepNumber ? '0.00' : step.expectedVoltage.toFixed(2)} V`;
+      document.getElementById('lcdVolt').style.color = blockedStep === step.stepNumber ? '#ef4444' : '#22c55e';
+      focusOnComponent(step.componentId, step.outputNet, blockedStep === step.stepNumber ? `🛑 Falla en Paso ${step.stepNumber}: ${step.failDiagnosis}` : `🧭 Paso ${step.stepNumber}: Medir ${step.expectedVoltage.toFixed(2)}V en ${step.pinToMeasure}`);
+    }
+
+    function mazeFirstStep() {
+      if (!activeMazeTrace) { startMazeDebugger(document.getElementById('mazePresetSelect').value, 1, null); return; }
+      activeMazeTrace.currentStepNumber = 1;
+      activeMazeTrace.blockedAtStepNumber = null;
+      renderMazeStepUI();
+    }
+
+    function mazePrevStep() {
+      if (!activeMazeTrace) return;
+      activeMazeTrace.blockedAtStepNumber = null;
+      activeMazeTrace.currentStepNumber = Math.max(1, activeMazeTrace.currentStepNumber - 1);
+      renderMazeStepUI();
+    }
+
+    function mazeNextStep() {
+      if (!activeMazeTrace) { startMazeDebugger(document.getElementById('mazePresetSelect').value, 1, null); return; }
+      activeMazeTrace.blockedAtStepNumber = null;
+      activeMazeTrace.currentStepNumber = Math.min(activeMazeTrace.steps.length, activeMazeTrace.currentStepNumber + 1);
+      renderMazeStepUI();
+    }
+
+    function mazeMarkFaultHere() {
+      if (!activeMazeTrace) return;
+      if (mazeAutoPlayTimer) { clearInterval(mazeAutoPlayTimer); mazeAutoPlayTimer = null; document.getElementById('btnMazePlay').textContent = '▶️ Play'; }
+      activeMazeTrace.blockedAtStepNumber = activeMazeTrace.currentStepNumber;
+      renderMazeStepUI();
+    }
+
+    function toggleMazeAutoPlay() {
+      if (mazeAutoPlayTimer) {
+        clearInterval(mazeAutoPlayTimer);
+        mazeAutoPlayTimer = null;
+        document.getElementById('btnMazePlay').textContent = '▶️ Play';
+        return;
+      }
+      if (!activeMazeTrace) {
+        startMazeDebugger(document.getElementById('mazePresetSelect').value, 1, null);
+      }
+      document.getElementById('btnMazePlay').textContent = '⏸ Pause';
+      mazeAutoPlayTimer = setInterval(() => {
+        if (!activeMazeTrace) return;
+        if (activeMazeTrace.currentStepNumber < activeMazeTrace.steps.length) {
+          activeMazeTrace.currentStepNumber++;
+          renderMazeStepUI();
+        } else {
+          clearInterval(mazeAutoPlayTimer);
+          mazeAutoPlayTimer = null;
+          document.getElementById('btnMazePlay').textContent = '▶️ Play';
+        }
+      }, 2200);
+    }
+
+    function applySimulationResult(sim) {
+      if (!sim) return;
+      activeSimulation = sim;
+      selectedFaultCompId = sim.faultedComponentId;
+      highlightedNet = sim.rootNet;
+      highlightedCompId = sim.faultedComponentId;
+
+      const mainNetState = (sim.netStates && sim.netStates.find(n => n.netName === sim.rootNet)) || (sim.netStates && sim.netStates[0]);
+      const dispV = mainNetState ? mainNetState.simulatedVoltage : sim.injectedVoltage;
+      const peakTemp = (sim.thermalHotspots && sim.thermalHotspots.length > 0)
+        ? Math.max(...sim.thermalHotspots.map(h => h.estimatedTempCelsius))
+        : 25.0;
+
+      document.getElementById('lcdVolt').textContent = `${dispV.toFixed(2)} V`;
+      document.getElementById('lcdVolt').style.color = sim.isShortIsolatedByLiftedPart ? '#22c55e' : '#ef4444';
+      document.getElementById('lcdAmp').textContent = `${sim.totalCurrentDrawnAmps.toFixed(2)} A`;
+      document.getElementById('lcdTemp').textContent = `${peakTemp.toFixed(1)} °C`;
+
+      const badge = document.getElementById('simStatusBadge');
+      if (sim.isShortIsolatedByLiftedPart) {
+        badge.textContent = 'CORTO AISLADO';
+        badge.style.color = '#22c55e';
+      } else {
+        badge.textContent = 'CORTO ACTIVO (CC)';
+        badge.style.color = '#ef4444';
+      }
+
+      const toast = document.getElementById('wsToast');
+      document.getElementById('wsToastText').innerHTML = sim.diagnosticSummary;
+      toast.style.display = 'flex';
+
+      if (sim.faultedComponentId && boardData) {
+        const comp = boardData.components.find(c => c.id.toUpperCase() === sim.faultedComponentId.toUpperCase());
+        if (comp) updateInspector(comp);
+      }
+    }
+
+    function focusOnComponent(compId, netName, note) {
+      if (!boardData) return;
+      const comp = boardData.components.find(c => c.id.toUpperCase() === compId.toUpperCase());
+      if (!comp) return;
+
+      highlightedCompId = comp.id;
+      if (netName) highlightedNet = netName.toUpperCase();
+
+      cam.zoom = Math.max(cam.zoom, 0.32);
+      cam.x = canvas.width / 2 - comp.x * cam.zoom;
+      cam.y = canvas.height / 2 + comp.y * cam.zoom;
+
+      updateInspector(comp);
+      if (note) {
+        const toast = document.getElementById('wsToast');
+        document.getElementById('wsToastText').innerHTML = `⚡ <b>[${comp.id} - ${comp.quadrant}]:</b> ${note}`;
+        toast.style.display = 'flex';
+      }
+    }
+
+    function updateInspector(comp) {
+      const uniqueNets = [...new Set(comp.pins.map(p => p.net).filter(n => n && n !== 'UNCONNECTED'))];
+      const nonGndNet = uniqueNets.find(n => n !== 'GND') || 'PPBUS_G3H';
+      const isLifted = liftedComponents.has(comp.id.toUpperCase());
+
+      const netPillsHtml = uniqueNets.slice(0, 10).map(n =>
+        `<button style="font-size:10px; padding:2px 6px; margin:2px;" onclick="document.getElementById('simNetSelect').value='${n}'; onSimNetChanged('${n}');">${n}</button>`
+      ).join('');
+
+      document.getElementById('inspectorBody').innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="color: var(--text-main); font-weight: 700; font-size: 14px;">
+            ${comp.id} <span style="color: var(--accent);">(${comp.category})</span>
+          </span>
+          <span class="badge">${comp.quadrant} • ${comp.side}</span>
+        </div>
+        <div style="margin-top:4px;"><b>Redes (clic para cargar en fuente):</b><br/>${netPillsHtml}</div>
+        <div style="display:flex; gap:6px; margin-top:8px;">
+          <button class="btn-sim-fire" onclick="simulateFaultOnComp('${comp.id}', '${nonGndNet}')">🔥 Simular Corto en ${nonGndNet}</button>
+          <button class="btn-lift" onclick="toggleLiftFuse('${comp.id}')">${isLifted ? '✅ Resoldar a Placa' : '🔧 Levantar Componente'}</button>
+        </div>
+        ${comp.schematicContext ? `<div style="margin-top:8px; padding:6px; background:#090d16; border-radius:4px; font-size:11px; color:#cbd5e1;"><b>Esquemático PDF (Págs ${comp.schematicPages.join(', ')}):</b><br/>${comp.schematicContext}</div>` : ''}
+      `;
+    }
+
+    function drawBoard() {
+      if (!boardData) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const bb = boardData.boundingBox;
+
+      // 1. Cuadrantes Q1-Q4
+      if (showQuadrants) {
+        const pMin = boardToScreen(bb.minX, bb.minY);
+        const pMax = boardToScreen(bb.maxX, bb.maxY);
+        const pMid = boardToScreen(bb.midX, bb.midY);
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(56, 189, 248, 0.22)';
+        ctx.setLineDash([6, 6]);
+        ctx.lineWidth = 1.3;
+        ctx.strokeRect(pMin.x, pMax.y, pMax.x - pMin.x, pMin.y - pMax.y);
+        ctx.beginPath();
+        ctx.moveTo(pMid.x, pMax.y); ctx.lineTo(pMid.x, pMin.y);
+        ctx.moveTo(pMin.x, pMid.y); ctx.lineTo(pMax.x, pMid.y);
+        ctx.stroke();
+
+        ctx.font = 'bold 14px sans-serif';
+        ctx.fillStyle = 'rgba(56, 189, 248, 0.35)';
+        ctx.fillText('Q1 (Top-Left)', pMin.x + 10, pMax.y + 20);
+        ctx.fillText('Q2 (Top-Right)', pMid.x + 10, pMax.y + 20);
+        ctx.fillText('Q3 (Bottom-Left)', pMin.x + 10, pMid.y + 20);
+        ctx.fillText('Q4 (Bottom-Right)', pMid.x + 10, pMid.y + 20);
+        ctx.restore();
+      }
+
+      // 2. Contorno físico de la placa
+      if (boardData.outline && boardData.outline.length > 1) {
+        ctx.save();
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        boardData.outline.forEach((pt, idx) => {
+          const s = boardToScreen(pt.x, pt.y);
+          if (idx === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 3. Componentes y Pines
+      for (const comp of boardData.components) {
+        if (currentSide !== 'ALL' && comp.side !== currentSide && comp.side !== 'Both') continue;
+
+        const isSelected = highlightedCompId && comp.id.toUpperCase() === highlightedCompId.toUpperCase();
+        const isLifted = liftedComponents.has(comp.id.toUpperCase());
+        const hasHighlightedNet = highlightedNet && comp.pins.some(p => p.net.toUpperCase() === highlightedNet);
+
+        const p1 = boardToScreen(comp.minX - 18, comp.maxY + 18);
+        const p2 = boardToScreen(comp.maxX + 18, comp.minY - 18);
+        const w = Math.max(4, p2.x - p1.x);
+        const h = Math.max(4, p2.y - p1.y);
+
+        ctx.fillStyle = isLifted
+          ? 'rgba(100, 116, 139, 0.25)'
+          : isSelected
+            ? 'rgba(245, 158, 11, 0.45)'
+            : hasHighlightedNet
+              ? 'rgba(34, 197, 94, 0.28)'
+              : comp.side === 'Top'
+                ? 'rgba(59, 130, 246, 0.12)'
+                : 'rgba(168, 85, 247, 0.12)';
+
+        ctx.strokeStyle = isLifted
+          ? '#94a3b8'
+          : isSelected
+            ? '#f59e0b'
+            : hasHighlightedNet
+              ? '#22c55e'
+              : comp.side === 'Top' ? '#1d4ed8' : '#6b21a8';
+
+        ctx.lineWidth = isSelected ? 2.5 : 1;
+        ctx.fillRect(p1.x, p1.y, w, h);
+        ctx.strokeRect(p1.x, p1.y, w, h);
+
+        if (isLifted) {
+          ctx.save();
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
+          ctx.moveTo(p2.x, p1.y); ctx.lineTo(p1.x, p2.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        if (cam.zoom > 0.24 || isSelected) {
+          const center = boardToScreen(comp.x, comp.y);
+          ctx.fillStyle = isSelected ? '#fef08a' : '#cbd5e1';
+          ctx.font = isSelected ? 'bold 12px monospace' : '10px monospace';
+          ctx.fillText(comp.id, center.x - 14, center.y + 3);
+        }
+      }
+
+      // 4. Animación en Vivo de Flujo de Corriente Eléctrica (FlowEdges)
+      if (activeSimulation && activeSimulation.flowEdges) {
+        ctx.save();
+        for (const edge of activeSimulation.flowEdges) {
+          const pFrom = boardToScreen(edge.fromX, edge.fromY);
+          const pTo = boardToScreen(edge.toX, edge.toY);
+
+          const isFaultPath = edge.status === 'HIGH_CURRENT_FAULT';
+          const isOpen = edge.status === 'OPEN_ISOLATED';
+
+          ctx.beginPath();
+          ctx.moveTo(pFrom.x, pFrom.y);
+          ctx.lineTo(pTo.x, pTo.y);
+
+          if (isOpen) {
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+            ctx.setLineDash([4, 6]);
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          } else {
+            ctx.setLineDash([]);
+            ctx.strokeStyle = isFaultPath ? 'rgba(239, 68, 68, 0.65)' : 'rgba(34, 197, 94, 0.5)';
+            ctx.lineWidth = isFaultPath ? 3.5 : 2;
+            ctx.stroke();
+
+            // Partículas animadas de corriente (electrones en movimiento hacia el corto)
+            const numParticles = isFaultPath ? 6 : 3;
+            for (let k = 0; k < numParticles; k++) {
+              const t = (animPhase + k / numParticles) % 1.0;
+              const px = pFrom.x + (pTo.x - pFrom.x) * t;
+              const py = pFrom.y + (pTo.y - pFrom.y) * t;
+
+              ctx.beginPath();
+              ctx.arc(px, py, isFaultPath ? 5 : 3.2, 0, Math.PI * 2);
+              ctx.fillStyle = isFaultPath ? '#fef08a' : '#4ade80';
+              ctx.shadowColor = isFaultPath ? '#ef4444' : '#22c55e';
+              ctx.shadowBlur = 10;
+              ctx.fill();
+            }
+          }
+        }
+        ctx.restore();
+      }
+
+      // 5. Mapa de Calor Infrarrojo (Cámara Térmica IR)
+      if (showThermalOverlay && activeSimulation && activeSimulation.thermalHotspots) {
+        ctx.save();
+        const pulse = 0.85 + 0.3 * Math.sin(animPhase * Math.PI * 2);
+
+        for (const spot of activeSimulation.thermalHotspots) {
+          const pt = boardToScreen(spot.x, spot.y);
+          const baseRadius = Math.max(38, 180 * spot.intensityNormalized * cam.zoom) * pulse;
+
+          const grad = ctx.createRadialGradient(pt.x, pt.y, 2, pt.x, pt.y, baseRadius);
+          grad.addColorStop(0.0, 'rgba(255, 255, 255, 0.95)');
+          grad.addColorStop(0.25, 'rgba(254, 240, 138, 0.85)');
+          grad.addColorStop(0.55, 'rgba(249, 115, 22, 0.55)');
+          grad.addColorStop(0.85, 'rgba(239, 68, 68, 0.25)');
+          grad.addColorStop(1.0, 'rgba(239, 68, 68, 0.0)');
+
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, baseRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Etiqueta de temperatura IR
+          ctx.fillStyle = '#090d16';
+          ctx.fillRect(pt.x + 10, pt.y - 24, 125, 22);
+          ctx.strokeStyle = '#ef4444';
+          ctx.strokeRect(pt.x + 10, pt.y - 24, 125, 22);
+          ctx.fillStyle = '#fef08a';
+          ctx.font = 'bold 11px monospace';
+          ctx.fillText(`🔥 ${spot.componentId}: ${spot.estimatedTempCelsius.toFixed(1)}°C`, pt.x + 15, pt.y - 9);
+        }
+        ctx.restore();
+      }
+
+      // 6. Renderizado del Circuit Step Debugger (Modo Laberinto Paso a Paso)
+      if (activeMazeTrace && activeMazeTrace.steps && activeMazeTrace.steps.length > 0) {
+        ctx.save();
+        const steps = activeMazeTrace.steps;
+
+        // 6.a Dibujar conexiones del laberinto entre pasos (1 -> 2 -> 3...)
+        for (let i = 0; i < steps.length - 1; i++) {
+          const sFrom = steps[i];
+          const sTo = steps[i + 1];
+          const pFrom = boardToScreen(sFrom.x, sFrom.y);
+          const pTo = boardToScreen(sTo.x, sTo.y);
+
+          const isPassed = sFrom.status === 'PASSED' && (sTo.status === 'PASSED' || sTo.status === 'ACTIVE_STEP');
+          const isBlockedEdge = sTo.status === 'BLOCKED_FAULT';
+
+          ctx.beginPath();
+          ctx.moveTo(pFrom.x, pFrom.y);
+          ctx.lineTo(pTo.x, pTo.y);
+
+          if (isBlockedEdge) {
+            ctx.setLineDash([6, 4]);
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 3.5;
+            ctx.stroke();
+
+            // Dibujar ícono de muro/bloqueo en medio del tramo
+            const mx = (pFrom.x + pTo.x) / 2;
+            const my = (pFrom.y + pTo.y) / 2;
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(mx - 10, my - 10, 20, 20);
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText('✖', mx - 5, my + 4);
+          } else if (isPassed) {
+            ctx.setLineDash([]);
+            ctx.strokeStyle = '#22c55e';
+            ctx.lineWidth = 3.2;
+            ctx.stroke();
+
+            // Partícula viajera en el tramo activo
+            if (sTo.status === 'ACTIVE_STEP') {
+              const px = pFrom.x + (pTo.x - pFrom.x) * animPhase;
+              const py = pFrom.y + (pTo.y - pFrom.y) * animPhase;
+              ctx.beginPath();
+              ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+              ctx.fillStyle = '#38bdf8';
+              ctx.shadowColor = '#38bdf8';
+              ctx.shadowBlur = 12;
+              ctx.fill();
+            }
+          } else {
+            ctx.setLineDash([4, 6]);
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.45)';
+            ctx.lineWidth = 1.8;
+            ctx.stroke();
+          }
+        }
+
+        // 6.b Dibujar Nodos Numerados del Laberinto (①, ②, ③...)
+        const pulseRadius = 16 + 6 * Math.sin(animPhase * Math.PI * 2);
+        for (const step of steps) {
+          const pt = boardToScreen(step.x, step.y);
+          const isCurr = step.status === 'ACTIVE_STEP';
+          const isBlocked = step.status === 'BLOCKED_FAULT';
+          const isDone = step.status === 'PASSED';
+
+          if (isCurr || isBlocked) {
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, pulseRadius, 0, Math.PI * 2);
+            ctx.strokeStyle = isBlocked ? '#ef4444' : '#38bdf8';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+          }
+
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 11, 0, Math.PI * 2);
+          ctx.fillStyle = isBlocked ? '#ef4444' : isCurr ? '#38bdf8' : isDone ? '#22c55e' : '#1e293b';
+          ctx.fill();
+          ctx.strokeStyle = '#090d16';
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.fillStyle = isCurr ? '#090d16' : '#f8fafc';
+          ctx.font = 'bold 11px sans-serif';
+          ctx.fillText(step.stepNumber.toString(), pt.x - 3.5, pt.y + 4);
+
+          if (isCurr || isBlocked) {
+            const label = `${isBlocked ? '🛑 0V BLOQUEO' : '🧭 PASO ' + step.stepNumber}: ${step.componentId} (${step.expectedVoltage.toFixed(2)}V en ${step.outputNet})`;
+            ctx.font = 'bold 11px monospace';
+            const tw = ctx.measureText(label).width + 16;
+            ctx.fillStyle = 'rgba(9, 13, 22, 0.92)';
+            ctx.fillRect(pt.x + 15, pt.y - 14, tw, 24);
+            ctx.strokeStyle = isBlocked ? '#ef4444' : '#38bdf8';
+            ctx.strokeRect(pt.x + 15, pt.y - 14, tw, 24);
+            ctx.fillStyle = isBlocked ? '#fca5a5' : '#fef08a';
+            ctx.fillText(label, pt.x + 22, pt.y + 2);
+          }
+        }
+
+        ctx.restore();
+      }
+    }
+
+    canvas.addEventListener('mousedown', e => {
+      isDragging = true;
+      dragStart = { x: e.clientX - cam.x, y: e.clientY - cam.y };
+    });
+    window.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      cam.x = e.clientX - dragStart.x;
+      cam.y = e.clientY - dragStart.y;
+    });
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      const mouseBoard = screenToBoard(e.offsetX, e.offsetY);
+      cam.zoom = Math.min(3.5, Math.max(0.05, cam.zoom * factor));
+      cam.x = e.offsetX - mouseBoard.x * cam.zoom;
+      cam.y = e.offsetY + mouseBoard.y * cam.zoom;
+    });
+
+    canvas.addEventListener('click', e => {
+      if (!boardData) return;
+      const pt = screenToBoard(e.offsetX, e.offsetY);
+      const hit = boardData.components.find(c =>
+        (currentSide === 'ALL' || c.side === currentSide || c.side === 'Both') &&
+        pt.x >= c.minX - 25 && pt.x <= c.maxX + 25 &&
+        pt.y >= c.minY - 25 && pt.y <= c.maxY + 25
+      );
+      if (hit) {
+        highlightedCompId = hit.id;
+        updateInspector(hit);
+      }
+    });
+
+    function searchFromInput() {
+      const val = document.getElementById('compSearchInput').value.trim();
+      if (!val || !boardData) return;
+      const comp = boardData.components.find(c => c.id.toUpperCase() === val.toUpperCase());
+      if (comp) {
+        focusOnComponent(comp.id, null, `Componente ${comp.id} localizado.`);
+      } else {
+        highlightedNet = val.toUpperCase();
+      }
+    }
+
+    function connectWebSocket() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const ws = new WebSocket(`${proto}//${location.host}/ws/obv`);
+      ws.onopen = () => {
+        document.getElementById('wsDot').style.background = '#22c55e';
+        document.getElementById('wsLabel').textContent = 'WebSocket Activo';
+      };
+      ws.onmessage = (event) => {
+        try {
+          const cmd = JSON.parse(event.data);
+          if (cmd.simulation) {
+            applySimulationResult(cmd.simulation);
+          }
+          if (cmd.mazeTrace) {
+            applyMazeTrace(cmd.mazeTrace);
+          }
+          if (cmd.component) {
+            focusOnComponent(cmd.component, cmd.net, cmd.message);
+          }
+        } catch (err) { console.error(err); }
+      };
+      ws.onclose = () => {
+        document.getElementById('wsDot').style.background = '#ef4444';
+        document.getElementById('wsLabel').textContent = 'Reconectando WS...';
+        setTimeout(connectWebSocket, 2500);
+      };
+    }
+
+    function sendQuickPrompt(text) {
+      document.getElementById('chatInput').value = text;
+      sendChat();
+    }
+
+    async function sendChat() {
+      const input = document.getElementById('chatInput');
+      const prompt = input.value.trim();
+      if (!prompt) return;
+      input.value = '';
+
+      const chatHistory = document.getElementById('chatHistory');
+      chatHistory.innerHTML += `<div class="msg user">${prompt}</div>`;
+
+      const loadingId = 'loading-' + Date.now();
+      chatHistory.innerHTML += `<div class="msg assistant" id="${loadingId}">⚡ <i>Simulando circuito, flujo térmico e invocando herramientas IA...</i></div>`;
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+
+      try {
+        const res = await fetch('/api/agent/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt })
+        });
+        const data = await res.json();
+
+        const toolsHtml = (data.executedTools || [])
+          .map(t => `<span class="tool-pill">🛠 ${t}</span>`)
+          .join('');
+
+        const formattedText = (data.responseText || '')
+          .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+          .replace(/`(.*?)`/g, '<code style="color:#38bdf8">$1</code>')
+          .replace(/\n/g, '<br/>');
+
+        document.getElementById(loadingId).innerHTML = `
+          ${toolsHtml ? `<div class="tool-pills">${toolsHtml}</div>` : ''}
+          <div>${formattedText}</div>
+        `;
+
+        if (data.simulation) {
+          applySimulationResult(data.simulation);
+        }
+        if (data.mazeTrace) {
+          applyMazeTrace(data.mazeTrace);
+        }
+        if (data.inspectedComponent) {
+          focusOnComponent(data.inspectedComponent, data.inspectedNet, data.simulation ? data.simulation.diagnosticSummary : null);
+        }
+      } catch (e) {
+        document.getElementById(loadingId).innerHTML = `<span style="color:#ef4444">Error: ${e.message}</span>`;
+      }
+      chatHistory.scrollTop = chatHistory.scrollHeight;
+    }
+
+    loadBoardGeometry();
+    connectWebSocket();
+  </script>
+</body>
+</html>

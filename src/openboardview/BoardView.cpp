@@ -78,6 +78,7 @@ int BoardView::ConfigParse(void) {
 
 	m_colors.readFromConfig(obvconfig);
 	keybindings.readFromConfig(obvconfig);
+	m_aiBridge.Start("127.0.0.1", 5080);
 
 	return 0;
 }
@@ -1041,6 +1042,7 @@ void BoardView::Update() {
 			}
 			MenuItemWithCheckbox("Net List", keybindings.getKeyNames("NetList"), m_showNetList);
 			MenuItemWithCheckbox("Part List", keybindings.getKeyNames("PartList"), m_showPartList);
+			MenuItemWithCheckbox("AI Diagnostics Assistant (.NET 10)", {}, m_showAiAssistant);
 
 			ImGui::EndMenu();
 		}
@@ -1128,6 +1130,11 @@ void BoardView::Update() {
 		ImGui::SameLine();
 		if (ImGui::Button("CLEAR")) {
 			ClearAllHighlights();
+		}
+
+		ImGui::SameLine();
+		if (ImGui::Button("AI Assistant")) {
+			m_showAiAssistant = !m_showAiAssistant;
 		}
 
 		/*
@@ -1291,6 +1298,7 @@ void BoardView::Update() {
 			CoordToScreen(backgroundImage.x1(), backgroundImage.y1()),
 			m_rotation);
 		DrawBoard();
+		m_aiBridge.RenderThermalAndFlowOverlay(*this, ImGui::GetWindowDrawList());
 	}
 	ImGui::End();
 	ImGui::PopStyleColor();
@@ -1680,6 +1688,7 @@ void BoardView::RenderOverlay() {
 	if (m_showPartList) {
 		ShowPartList(&m_showPartList);
 	}
+	m_aiBridge.UpdateAndRender(*this, &m_showAiAssistant);
 }
 
 /** End overlay & windows region **/

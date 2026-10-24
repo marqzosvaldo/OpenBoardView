@@ -21,6 +21,7 @@
 #include "PDFBridge/PDFBridgeEvince.h"
 #include "PDFBridge/PDFBridgeSumatra.h"
 #include "PDFBridge/PDFFile.h"
+#include "AI/ObvAiBridge.h"
 #include <cstdint>
 #include <vector>
 
@@ -178,6 +179,8 @@ struct BoardView {
 	bool m_searchNets       = true;
 	bool m_showNetList;
 	bool m_showPartList;
+	bool m_showAiAssistant = true;
+	ObvAiBridge m_aiBridge;
 	bool m_showPreferences;
 	bool m_showColorPreferences;
 	bool m_firstFrame = true;
