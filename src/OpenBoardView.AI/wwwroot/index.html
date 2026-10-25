@@ -456,7 +456,8 @@
       <button id="btnThermalView" class="thermal-btn active" onclick="toggleThermalOverlay()">🌡 Cámara Térmica IR</button>
       <button onclick="resetView()">Centrar</button>
     </div>
-    <div class="ws-status">
+    <div class="ws-status" style="display:flex; align-items:center; gap:8px;">
+      <span id="aiEngineBadge" style="font-size: 11px; padding: 2px 10px; border-radius: 9999px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); font-weight: 500; cursor: default;">🔵 Detectando IA...</span>
       <span class="dot" id="wsDot"></span>
       <span id="wsLabel">WebSocket Activo</span>
     </div>
@@ -2070,7 +2071,37 @@
       });
     }
 
+    async function loadAiCapabilities() {
+      try {
+        const res = await fetch('/api/agent/capabilities');
+        if (res.ok) {
+          const cap = await res.json();
+          const badge = document.getElementById('aiEngineBadge');
+          if (badge) {
+            badge.textContent = cap.displayTitle || 'IA Activa';
+            badge.title = cap.description || '';
+            if (cap.activeTier === 'Tier1_OllamaLocal') {
+              badge.style.background = 'rgba(34, 197, 94, 0.15)';
+              badge.style.color = '#4ade80';
+              badge.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+            } else if (cap.activeTier === 'Tier2_GeminiCloud') {
+              badge.style.background = 'rgba(59, 130, 246, 0.15)';
+              badge.style.color = '#60a5fa';
+              badge.style.borderColor = 'rgba(59, 130, 246, 0.4)';
+            } else {
+              badge.style.background = 'rgba(234, 179, 8, 0.15)';
+              badge.style.color = '#facc15';
+              badge.style.borderColor = 'rgba(234, 179, 8, 0.4)';
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('No se pudo verificar capacidades de IA', e);
+      }
+    }
+
     async function initApp() {
+      loadAiCapabilities();
       await loadWorkspaces();
       await loadBoardGeometry();
       const sel = document.getElementById('workspaceSelector');

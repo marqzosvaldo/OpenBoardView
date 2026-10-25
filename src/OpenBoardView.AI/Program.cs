@@ -49,21 +49,28 @@ builder.Services.AddTransient<FlowKnowledgeBase>(sp => sp.GetRequiredService<Act
 
 builder.Services.AddScoped<DiagnosticsAgentContext>();
 builder.Services.AddScoped<BoardDiagnosticsTools>();
+builder.Services.AddSingleton<InferenceCapabilityProbe>(sp =>
+{
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var config = sp.GetRequiredService<IConfiguration>();
+    var client = httpClientFactory.CreateClient("InferenceProbe");
+    return new InferenceCapabilityProbe(client, config);
+});
+
 builder.Services.AddScoped<IChatClient>(sp =>
 {
     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
     var config = sp.GetRequiredService<IConfiguration>();
-    var provider = config["AiProvider:Provider"] ?? "Gemini";
+    var probe = sp.GetRequiredService<InferenceCapabilityProbe>();
+    var status = probe.ProbeCapabilitiesAsync().GetAwaiter().GetResult();
 
     IChatClient baseClient;
-    if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase) ||
-        provider.Equals("OpenAI", StringComparison.OrdinalIgnoreCase))
+    if (status.ActiveTier == "Tier1_OllamaLocal")
     {
         var httpClient = httpClientFactory.CreateClient("OllamaChatClient");
         var endpoint = config["AiProvider:OllamaOrOpenAI:Endpoint"] ?? "http://localhost:11434/api/chat";
-        var model = config["AiProvider:OllamaOrOpenAI:Model"] ?? "qwen2.5-coder:7b";
         var apiKey = config["AiProvider:OllamaOrOpenAI:ApiKey"];
-        baseClient = new OllamaChatClient(httpClient, endpoint, model, apiKey);
+        baseClient = new OllamaChatClient(httpClient, endpoint, status.Model, apiKey);
     }
     else
     {
@@ -350,6 +357,12 @@ app.MapPost("/api/agent/intent", (AgentQueryRequest request, CircuitGraphBuilder
 {
     var intent = DiagnosticIntentParser.Parse(request.Prompt, graph, kb, mazeDebugger);
     return Results.Ok(intent);
+});
+
+app.MapGet("/api/agent/capabilities", async (InferenceCapabilityProbe probe) =>
+{
+    var status = await probe.ProbeCapabilitiesAsync();
+    return Results.Ok(status);
 });
 
 app.MapPost("/api/agent/query", async (AgentQueryRequest request, BoardDiagnosticsService agent, CancellationToken ct) =>

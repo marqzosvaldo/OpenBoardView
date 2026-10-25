@@ -38,22 +38,50 @@ public class GeminiChatClient : IChatClient
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={_apiKey}";
         var requestPayload = ConstruirPayloadGemini(chatMessages, options);
+        var jsonPayload = requestPayload.ToJsonString();
 
-        var content = new StringContent(requestPayload.ToJsonString(), Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        var candidateModels = new List<string> { _model };
+        foreach (var fallbackModel in new[] { "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash" })
         {
-            var err = await response.Content.ReadAsStringAsync(cancellationToken);
-            Console.WriteLine($"[GeminiChatClient Error] {response.StatusCode}: {err}");
-            response.EnsureSuccessStatusCode();
+            if (!candidateModels.Contains(fallbackModel, StringComparer.OrdinalIgnoreCase))
+                candidateModels.Add(fallbackModel);
         }
 
-        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        using var doc = JsonDocument.Parse(responseJson);
+        HttpResponseMessage? lastResponse = null;
+        string lastErrorBody = string.Empty;
 
-        return ParsearRespuestaGemini(doc.RootElement);
+        for (int attempt = 0; attempt < candidateModels.Count; attempt++)
+        {
+            var currentModel = candidateModels[attempt];
+            var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{currentModel}:generateContent?key={_apiKey}";
+
+            using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+            lastResponse = await _httpClient.PostAsync(endpoint, content, cancellationToken);
+
+            if (lastResponse.IsSuccessStatusCode)
+            {
+                var responseJson = await lastResponse.Content.ReadAsStringAsync(cancellationToken);
+                using var doc = JsonDocument.Parse(responseJson);
+                return ParsearRespuestaGemini(doc.RootElement);
+            }
+
+            lastErrorBody = await lastResponse.Content.ReadAsStringAsync(cancellationToken);
+            int statusCode = (int)lastResponse.StatusCode;
+            Console.WriteLine($"[GeminiChatClient Warning] Modelo '{currentModel}' devolvió {lastResponse.StatusCode} ({statusCode}): {lastErrorBody}");
+
+            // Si es sobrecarga temporal (503), cuota/rate-limit (429) o error 5xx o modelo no encontrado (404), intentar con el siguiente modelo
+            if (statusCode is 503 or 429 or 500 or 502 or 504 or 404 && attempt < candidateModels.Count - 1)
+            {
+                await Task.Delay(400 * (attempt + 1), cancellationToken);
+                continue;
+            }
+
+            lastResponse.EnsureSuccessStatusCode();
+        }
+
+        lastResponse?.EnsureSuccessStatusCode();
+        throw new HttpRequestException($"Error al invocar Gemini API: {lastErrorBody}");
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -61,14 +89,40 @@ public class GeminiChatClient : IChatClient
         ChatOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:streamGenerateContent?key={_apiKey}&alt=sse";
+        var candidateModels = new List<string> { _model };
+        foreach (var fallbackModel in new[] { "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash" })
+        {
+            if (!candidateModels.Contains(fallbackModel, StringComparer.OrdinalIgnoreCase))
+                candidateModels.Add(fallbackModel);
+        }
+
         var requestPayload = ConstruirPayloadGemini(chatMessages, options);
+        var jsonPayload = requestPayload.ToJsonString();
 
-        var content = new StringContent(requestPayload.ToJsonString(), Encoding.UTF8, "application/json");
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = content };
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        HttpResponseMessage? response = null;
+        for (int attempt = 0; attempt < candidateModels.Count; attempt++)
+        {
+            var currentModel = candidateModels[attempt];
+            var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{currentModel}:streamGenerateContent?key={_apiKey}&alt=sse";
 
+            var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+            var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = content };
+            response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+                break;
+
+            int statusCode = (int)response.StatusCode;
+            if (statusCode is 503 or 429 or 500 or 502 or 504 or 404 && attempt < candidateModels.Count - 1)
+            {
+                await Task.Delay(400 * (attempt + 1), cancellationToken);
+                continue;
+            }
+
+            response.EnsureSuccessStatusCode();
+        }
+
+        response!.EnsureSuccessStatusCode();
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream, Encoding.UTF8);
 

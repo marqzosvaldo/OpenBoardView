@@ -60,27 +60,24 @@ public class BoardDiagnosticsService
         var (messages, options) = PrepareContextAndTools(request.Prompt, request.History);
 
         string answerText = string.Empty;
+        bool llmSuccess = false;
         try
         {
             var response = await _chatClient.GetResponseAsync(messages, options, cancellationToken);
             answerText = string.Join("\n\n", response.Messages
                 .Where(m => m.Role == ChatRole.Assistant && !string.IsNullOrWhiteSpace(m.Text))
                 .Select(m => m.Text.Trim()));
+            llmSuccess = !string.IsNullOrWhiteSpace(answerText);
         }
         catch (Exception ex)
         {
-            if (ex.Message.Contains("400") || ex.Message.Contains("API_KEY_INVALID") || ex.Message.Contains("YOUR_GEMINI_API_KEY"))
-            {
-                answerText = "⚠️ [Aviso del Motor IA]: La API Key de Gemini no está configurada o es inválida.\n\n" +
-                             "Para activar el asistente inteligente por chat:\n" +
-                             "1. Obtén tu clave gratuita en https://aistudio.google.com/app/apikey\n" +
-                             "2. Configúrala en `src/OpenBoardView.AI/appsettings.json` o con la variable `export GEMINI_API_KEY=\"tu_clave\"`.\n\n" +
-                             "ℹ️ *Nota: Las herramientas deterministas (Modo Laberinto / Debugger, Grafo de Componentes y Simulador Eléctrico) funcionan al 100% de manera local sin necesidad de ninguna API Key.*";
-            }
-            else
-            {
-                answerText = $"[Aviso del Motor IA]: Error al invocar el proveedor de IA ({ex.Message}).";
-            }
+            Console.WriteLine($"[BoardDiagnosticsService] Aviso: Proveedor IA no disponible ({ex.Message}). Activando Enrutador Determinista de Fallback.");
+        }
+
+        // Si el LLM no respondió (desconexión, 503, cuota o sin API key), ejecutar el Enrutador Determinista de Fallback
+        if (!llmSuccess)
+        {
+            answerText = await EjecutarHerramientaFallbackPorIntencionAsync(request.Prompt, intent);
         }
 
         // Garantizar sincronización estricta entre el prompt (Intent.PrimaryNet) y el Step Debugger / BoardView:
@@ -118,6 +115,45 @@ public class BoardDiagnosticsService
             UiCommands: _context.SentUiCommands.ToList(),
             Intent: intent
         );
+    }
+
+    private async Task<string> EjecutarHerramientaFallbackPorIntencionAsync(string prompt, DiagnosticIntentDto intent)
+    {
+        string primaryNet = !string.IsNullOrWhiteSpace(intent.PrimaryNet) 
+            ? intent.PrimaryNet 
+            : (_mazeDebugger.ExtractTargetNetFromQuery(prompt) ?? _graph.GetBoardMasterPowerRail());
+
+        string lower = (prompt ?? string.Empty).ToLowerInvariant();
+
+        // 1. Si es consulta de corto circuito o inyección de voltaje
+        if (lower.Contains("corto") || lower.Contains("inyect") || lower.Contains("tierra") || lower.Contains("0v") || lower.Contains("calienta"))
+        {
+            var quadrants = _tools.FindShortCircuitCandidatesByQuadrant(primaryNet);
+            var worstQuad = quadrants.OrderByDescending(q => q.ShuntCapacitorsToGnd.Count).FirstOrDefault();
+            
+            if (worstQuad != null && worstQuad.ShuntCapacitorsToGnd.Count > 0)
+            {
+                await _tools.HighlightInBoardViewAsync(worstQuad.ShuntCapacitorsToGnd.First(), primaryNet);
+            }
+
+            return $"⚡ **[Modo Autónomo Local - Aislamiento de Cortocircuito]**\n\n" +
+                   $"Se analizó la topología física (.brd) para la línea **{primaryNet}**:\n" +
+                   $"- **Densidad de capacitores a GND:** Se encontraron {quadrants.Sum(q => q.CapacitorCount)} capacitores conectados ({quadrants.Sum(q => q.ShuntCapacitorsToGnd.Count)} shunts directos a tierra).\n" +
+                   $"- **Cuadrante Crítico:** Cuadrante **{worstQuad?.Quadrant ?? "Q1"}** con {worstQuad?.ShuntCapacitorsToGnd.Count ?? 0} capacitores paralelos a GND.\n" +
+                   $"- **Recomendación técnica:** Con la placa en frío, mide impedancia en `{worstQuad?.ShuntCapacitorsToGnd.FirstOrDefault() ?? "los capacitores"}`. Si mides < 50 Ω, inyecta 1.0V (límite 1.5A) en el cuadrante {worstQuad?.Quadrant} con cámara térmica o alcohol isopropílico.";
+        }
+
+        // 2. Si es consulta de rastreo, puertos, alimentación, carga o encendido
+        var trace = await _tools.StartCircuitMazeDebuggerAsync(primaryNet);
+        var activeStep = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) ?? trace.Steps.FirstOrDefault();
+
+        return $"⚡ **[Modo Autónomo Local - Secuencia de Diagnóstico]**\n\n" +
+               $"Se activó el Step Debugger en la placa para **{primaryNet}** ({trace.Steps.Count} pasos secuenciales):\n\n" +
+               $"### Paso 1: {activeStep?.StageTitle ?? primaryNet}\n" +
+               $"* **Componente a medir:** `{activeStep?.ComponentId ?? "Punto de prueba"}` ({activeStep?.Category ?? "Componente"}, Cuadrante **{activeStep?.Quadrant ?? "Q1"}**, cara **{activeStep?.Side ?? "Top"}**).\n" +
+               $"* **Tensión esperada:** `{activeStep?.ExpectedVoltage:F2}V` en `{activeStep?.PinToMeasure ?? "pines de entrada"}`.\n" +
+               $"* **Diagnóstico si mide 0V:** {activeStep?.FailDiagnosis ?? "Línea caída por falta de habilitación o corto a tierra."}\n\n" +
+               $"*(El circuito y los componentes ya están resaltados y posicionados en la pantalla de OpenBoardView).*";
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> ProcessStreamingQueryAsync(
