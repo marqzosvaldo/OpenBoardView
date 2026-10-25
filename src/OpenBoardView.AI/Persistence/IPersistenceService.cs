@@ -41,6 +41,7 @@ public interface IPersistenceService
     Task SaveDiagnosticPresetAsync(DiagnosticPresetDto preset);
     Task<DiagnosticPresetDto?> GetDiagnosticPresetAsync(string boardId, string symptomKey);
     Task<List<DiagnosticPresetDto>> GetDiagnosticPresetsByBoardAsync(string boardId);
+    Task UpdateComponentPdfPageAsync(string boardId, string componentId, int pdfPage);
 
     // Vector Embeddings (sqlite-vec)
     bool IsVectorExtensionLoaded { get; }

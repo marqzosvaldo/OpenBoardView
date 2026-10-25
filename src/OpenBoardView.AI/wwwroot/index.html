@@ -1078,6 +1078,15 @@
         `<button style="font-size:10px; padding:2px 6px; margin:2px;" onclick="document.getElementById('simNetSelect').value='${n}'; onSimNetChanged('${n}');">${n}</button>`
       ).join('');
 
+      const pinsListHtml = comp.pins && comp.pins.length > 0
+        ? `<div style="margin-top:6px; font-size:11px;">
+            <b>Pines (${comp.pins.length}):</b>
+            <div style="display:flex; flex-wrap:wrap; gap:4px; max-height:85px; overflow-y:auto; padding:4px; border:1px solid #1e293b; border-radius:4px; background:#05080f; margin-top:2px;">
+              ${comp.pins.map(p => `<span style="padding:2px 5px; border-radius:3px; background:#0f172a; cursor:pointer;" onclick="highlightedNet='${p.net.toUpperCase()}'; onSimNetChanged('${p.net}');" title="Clic para resaltar red ${p.net}"><b style="color:${p.num==1?'#fef08a':'#94a3b8'};">P${p.num}:</b> <span style="color:#38bdf8;">${p.net}</span></span>`).join('')}
+            </div>
+           </div>`
+        : '';
+
       document.getElementById('inspectorBody').innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
           <span style="color: var(--text-main); font-weight: 700; font-size: 14px;">
@@ -1086,6 +1095,7 @@
           <span class="badge">${comp.quadrant} • ${comp.side}</span>
         </div>
         <div style="margin-top:4px;"><b>Redes (clic para cargar en fuente):</b><br/>${netPillsHtml}</div>
+        ${pinsListHtml}
         <div style="display:flex; gap:6px; margin-top:8px;">
           <button class="btn-sim-fire" onclick="simulateFaultOnComp('${comp.id}', '${nonGndNet}')">🔥 Simular Corto en ${nonGndNet}</button>
           <button class="btn-lift" onclick="toggleLiftFuse('${comp.id}')">${isLifted ? '✅ Resoldar a Placa' : '🔧 Levantar Componente'}</button>
@@ -1184,6 +1194,46 @@
           ctx.moveTo(p2.x, p1.y); ctx.lineTo(p1.x, p2.y);
           ctx.stroke();
           ctx.restore();
+        }
+
+        // 3.b Dibujo de Pines individuales (pads circulares y numeración)
+        if (comp.pins && comp.pins.length > 0 && (cam.zoom > 0.08 || isSelected)) {
+          for (const pin of comp.pins) {
+            const pPin = boardToScreen(pin.x, pin.y);
+            const isPinHighlighted = highlightedNet && pin.net && pin.net.toUpperCase() === highlightedNet;
+            const isGnd = pin.net && pin.net.toUpperCase() === 'GND';
+
+            const padR = Math.max(1.8, Math.min(10, 7.5 * cam.zoom));
+
+            ctx.beginPath();
+            ctx.arc(pPin.x, pPin.y, padR, 0, Math.PI * 2);
+
+            if (isPinHighlighted) {
+              ctx.fillStyle = '#22c55e';
+              ctx.shadowColor = '#22c55e';
+              ctx.shadowBlur = 6;
+            } else if (isGnd) {
+              ctx.fillStyle = 'rgba(100, 116, 139, 0.55)';
+              ctx.shadowBlur = 0;
+            } else {
+              ctx.fillStyle = comp.side === 'Top' ? 'rgba(56, 189, 248, 0.75)' : 'rgba(168, 85, 247, 0.75)';
+              ctx.shadowBlur = 0;
+            }
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            if (pin.num === '1' || pin.num === 1) {
+              ctx.strokeStyle = '#fef08a';
+              ctx.lineWidth = 1.2;
+              ctx.stroke();
+            }
+
+            if (cam.zoom > 0.42 || isSelected) {
+              ctx.fillStyle = '#f8fafc';
+              ctx.font = 'bold 8px monospace';
+              ctx.fillText(pin.num, pPin.x - 3, pPin.y - padR - 2);
+            }
+          }
         }
 
         if (cam.zoom > 0.24 || isSelected) {
@@ -1407,6 +1457,13 @@
       );
       if (hit) {
         highlightedCompId = hit.id;
+        if (hit.pins && hit.pins.length > 0) {
+          const pinHit = hit.pins.find(p => Math.hypot(p.x - pt.x, p.y - pt.y) <= 35);
+          if (pinHit && pinHit.net) {
+            highlightedNet = pinHit.net.toUpperCase();
+            onSimNetChanged(pinHit.net);
+          }
+        }
         updateInspector(hit);
       }
     });

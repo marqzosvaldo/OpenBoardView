@@ -323,7 +323,8 @@ app.MapPost("/api/board/debugger/trace", async (
 {
     var boardId = Path.GetFileNameWithoutExtension(graph.Topology.FileName);
     var failureStats = await persistence.GetTopFailingComponentsAsync(boardId, request.QueryOrSymptom);
-    var trace = mazeDebugger.BuildTrace(request, failureStats);
+    var preset = await persistence.GetDiagnosticPresetAsync(boardId, request.QueryOrSymptom);
+    var trace = mazeDebugger.BuildTrace(request, failureStats, preset);
     var activeNode = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) ?? trace.Steps.First();
     var wsPayload = new ObvUiCommandPayload(
         Action: "maze_debugger",

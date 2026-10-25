@@ -999,5 +999,21 @@ public class SqlitePersistenceService : IPersistenceService
         return list;
     }
 
+    public async Task UpdateComponentPdfPageAsync(string boardId, string componentId, int pdfPage)
+    {
+        using var connection = await OpenConnectionAsync();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE Components
+            SET PdfPage = $page, UpdatedAt = datetime('now')
+            WHERE ComponentId = $compId
+              AND (BoardId = $boardId OR BoardId LIKE '%' || $boardId || '%');
+        ";
+        cmd.Parameters.AddWithValue("$page", pdfPage);
+        cmd.Parameters.AddWithValue("$compId", componentId);
+        cmd.Parameters.AddWithValue("$boardId", boardId);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     #endregion
 }

@@ -106,7 +106,10 @@ public class CircuitMazeDebugger
 
     public FlowKnowledgeBase Knowledge => _knowledge;
 
-    public MazeTraceResultDto BuildTrace(MazeTraceRequestDto request, List<ComponentFailureStat>? failureStats = null)
+    public MazeTraceResultDto BuildTrace(
+        MazeTraceRequestDto request, 
+        List<ComponentFailureStat>? failureStats = null,
+        DiagnosticPresetDto? preset = null)
     {
         string rawQuery = request.QueryOrSymptom ?? "no carga";
         string q = rawQuery.Trim().ToLowerInvariant();
@@ -140,6 +143,58 @@ public class CircuitMazeDebugger
                     s.ExpectedReading,
                     s.Branch))
                 .ToList();
+
+            if (preset != null)
+            {
+                warnings.Add($"⚡ Seguridad en Frío: Corto a tierra si R < {preset.ColdShortThresholdReal} Ω. Riel normal si R > {preset.ColdNormalMinReal} Ω (NO inyectar voltaje si la impedancia es normal).");
+            }
+        }
+        else if (preset != null && !string.IsNullOrWhiteSpace(preset.PresetJson))
+        {
+            title = $"Laberinto Curado: {preset.SymptomKey}";
+            symptomDesc = preset.SymptomDescription;
+            rawSteps = new List<RawStep>();
+            string firstNet = "PP3V8_AON";
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(preset.PresetJson);
+                if (doc.RootElement.TryGetProperty("stepperNodes", out var nodesArr))
+                {
+                    foreach (var n in nodesArr.EnumerateArray())
+                    {
+                        string cId = n.GetProperty("componentId").GetString()!;
+                        string pNum = n.GetProperty("pin").GetString()!;
+                        string sName = n.GetProperty("signalName").GetString()!;
+                        string expStr = n.GetProperty("expectedNominal").GetString()!;
+                        int pPage = n.GetProperty("schematicPage").GetInt32();
+                        string desc = n.GetProperty("description").GetString()!;
+                        double v = 3.80;
+                        var m = System.Text.RegularExpressions.Regex.Match(expStr, @"(\d+(\.\d+)?)");
+                        if (m.Success && double.TryParse(m.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedVal)) v = parsedVal;
+
+                        rawSteps.Add(new RawStep(
+                            CompId: cId,
+                            StageTitle: $"Paso {n.GetProperty("stepNumber").GetInt32()}: {sName} ({cId})",
+                            InputNet: sName,
+                            OutputNet: sName,
+                            ExpectedV: v,
+                            PinHint: $"Pin {pNum} de {cId} [Pág. Esquemático {pPage}]",
+                            HowItWorks: desc,
+                            FailDiag: $"Línea {sName} en 0.00V. {desc}",
+                            DataSource: DataSources.Curated,
+                            MeasurementMode: MeasurementModes.Voltage,
+                            ExpectedReading: expStr,
+                            Branch: null
+                        ));
+                    }
+                    firstNet = rawSteps.FirstOrDefault()?.OutputNet ?? "PP3V8_AON";
+                }
+            }
+            catch {}
+
+            resolvedTargetNet = firstNet;
+            warnings.Add($"⚡ Seguridad en Frío: Corto a tierra si R < {preset.ColdShortThresholdReal} Ω. Riel normal si R > {preset.ColdNormalMinReal} Ω (NO inyectar voltaje si la impedancia es normal).");
         }
         else
         {

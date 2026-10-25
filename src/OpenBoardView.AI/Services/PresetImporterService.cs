@@ -87,6 +87,21 @@ public class PresetImporterService : IPresetImporterService
 
                 await _persistence.SaveDiagnosticPresetAsync(presetDto);
                 count++;
+
+                // Actualizar números de página esquemática en Components de SQLite
+                if (presetEl.TryGetProperty("stepperNodes", out var nodesEl))
+                {
+                    foreach (var node in nodesEl.EnumerateArray())
+                    {
+                        if (node.TryGetProperty("componentId", out var cIdProp) &&
+                            node.TryGetProperty("schematicPage", out var pageProp))
+                        {
+                            string compId = cIdProp.GetString()!;
+                            int page = pageProp.GetInt32();
+                            await _persistence.UpdateComponentPdfPageAsync(boardId, compId, page);
+                        }
+                    }
+                }
             }
 
             _logger.LogInformation("[PresetImporter] ✅ Plantilla '{Model}' ({BoardId}) importada exitosamente ({Count} presets en SQLite).",
