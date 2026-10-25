@@ -121,6 +121,48 @@ public class CircuitGraphBuilder : IBrdTopologyProvider
     }
 
     /// <summary>
+    /// Identifica dinámicamente el riel principal de alimentación (línea maestra de standby / sistema)
+    /// de la placa actualmente cargada, inspeccionando las redes del .brd sin asumir nombres fijos
+    /// (ej. PP3V8_AON o PPBUS_AON en Apple Silicon M-series, PPBUS_G3H en Intel, etc.).
+    /// </summary>
+    public string GetBoardMasterPowerRail()
+    {
+        var powerNets = _topology.Nets
+            .Where(n => !n.IsGround && !n.IsUnconnected && n.Pins.Count > 0)
+            .Where(n => n.Name.StartsWith("PP", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (powerNets.Count == 0)
+        {
+            var anyNet = _topology.Nets
+                .Where(n => !n.IsGround && !n.IsUnconnected && n.Pins.Count > 0)
+                .OrderByDescending(n => n.Pins.Count)
+                .FirstOrDefault();
+            return anyNet?.Name ?? "PPBUS_G3H";
+        }
+
+        var scored = powerNets.Select(n =>
+        {
+            int score = n.Pins.Count;
+            string upper = n.Name.ToUpperInvariant();
+
+            if (upper.Contains("PPBUS_G3H") || upper == "PPBUS_AON" || upper == "PP3V8_AON") score += 10000;
+            else if (upper.StartsWith("PPBUS_") || upper.StartsWith("PP3V8_")) score += 5000;
+            else if (upper.Contains("DCIN") || upper.Contains("VBUS")) score += 3000;
+            else if (upper.Contains("AON") || upper.Contains("G3H") || upper.Contains("MAIN")) score += 2000;
+            else if (upper.Contains("3V42") || upper.Contains("3V3_S5") || upper.Contains("5V_S5")) score += 1000;
+
+            if (upper.Contains("_ISNS") || upper.Contains("SPKR") || upper.Contains("BKLT")) score -= 3000;
+
+            return (Net: n, Score: score);
+        })
+        .OrderByDescending(x => x.Score)
+        .First();
+
+        return scored.Net.Name;
+    }
+
+    /// <summary>
     /// Devuelve todos los componentes conectados a una red específica, priorizando capacitores a tierra (candidatos a corto) e ICs.
     /// </summary>
     public List<ComponentNodeSummary> GetComponentsOnNet(string netName)

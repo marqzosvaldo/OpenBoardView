@@ -94,7 +94,8 @@ public class CircuitSimulator
 
     public SimulationResultDto RunSimulation(SimulationRequestDto req)
     {
-        string targetNet = string.IsNullOrWhiteSpace(req.NetName) ? "PPBUS_G3H" : req.NetName.Trim().ToUpperInvariant();
+        string rawNet = string.IsNullOrWhiteSpace(req.NetName) ? _graph.GetBoardMasterPowerRail() : req.NetName.Trim().ToUpperInvariant();
+        string targetNet = _graph.NetExists(rawNet) ? rawNet : _graph.GetBoardMasterPowerRail();
         var liftedSet = new HashSet<string>(req.LiftedComponentIds ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
 
         var (resolvedNominalV, voltageSource) = ResolveNominalVoltage(targetNet);

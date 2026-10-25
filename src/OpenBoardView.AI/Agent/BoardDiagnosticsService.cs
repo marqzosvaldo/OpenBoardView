@@ -97,7 +97,8 @@ public class BoardDiagnosticsService
 
             if (traceMissingOrMismatched && (matchedFlow is not null || extractedNet is not null))
             {
-                await _tools.StartCircuitMazeDebuggerAsync(request.Prompt);
+                string targetToUse = extractedNet ?? intent.PrimaryNet ?? request.Prompt;
+                await _tools.StartCircuitMazeDebuggerAsync(targetToUse);
             }
         }
 
@@ -142,7 +143,7 @@ public class BoardDiagnosticsService
             "3. Recomienda al técnico en qué cuadrante y cara (Top/Bottom) inyectar voltaje o buscar temperatura según dónde haya mayor densidad de capacitores en paralelo a GND (ShuntCapacitorsToGnd), o si conviene levantar un fusible/bobina puente (ej. F7040) para aislar la línea.\n" +
             "4. Cuando identifiques un componente clave a revisar o medir, invoca 'HighlightInBoardViewAsync' para iluminarlo automáticamente en la pantalla de OpenBoardView.\n" +
             "5. Cuando el usuario pida simular una falla, inyectar tensión, ver el flujo de corriente, cámara térmica o qué pasa al levantar un fusible/componente, SIEMPRE invoca 'SimulateElectricalFaultAndThermalFlowAsync' para dibujar la animación de corriente y puntos de calor en vivo.\n" +
-            "6. Cuando el usuario plantee un problema de secuencia (como 'mi laptop no carga', 'no tengo luz en magsafe', 'sin backlight') o pida rastrear paso a paso cómo viaja la línea como un debugger/laberinto, SIEMPRE invoca 'StartCircuitMazeDebuggerAsync' para activar el Step Debugger interactivo en la pantalla.\n" +
+            "6. Cuando el usuario plantee un problema o síntoma en lenguaje natural (ej. 'los puertos usb no funcionan', 'mi laptop no carga', 'no da imagen', 'sin audio', 'se calienta') o pida rastrear paso a paso cómo viaja la línea como un debugger/laberinto, SIEMPRE invoca 'StartCircuitMazeDebuggerAsync'. Puedes pasarle tanto el síntoma en lenguaje natural como la red específica de la placa (ej. 'PPDCIN_USBC_AON', 'PPVBUS_USBC0', 'PPVOUT_S0_LCDBKLT', 'PP3V8_AON'). El motor de diagnóstico mapeará automáticamente el subsistema hacia los componentes físicos y guiará al técnico paso a paso.\n" +
             "7. Responde en español técnico, claro, estructurado y directo al grano.";
 
         var messages = new List<ChatMessage>

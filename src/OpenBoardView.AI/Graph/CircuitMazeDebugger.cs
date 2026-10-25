@@ -72,6 +72,74 @@ public class CircuitMazeDebugger
         @"\b([A-Za-z][A-Za-z0-9_<>]{2,})\b",
         RegexOptions.Compiled);
 
+    private static readonly Regex VoltageMentionRegex = new(
+        @"\b(\d{1,2}(?:[\.,]\d{1,2})?)\s*(?:v|voltios|volts)\b|\b(\d{1,2})v(\d{1,2})?\b",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private record SemanticDomainDef(
+        string DomainName,
+        string[] Keywords,
+        string[] NetPatterns,
+        string[] PreferredPrefixes);
+
+    private static readonly List<SemanticDomainDef> SemanticDomains = new()
+    {
+        new(
+            "USB_TYPEC",
+            new[] { "usb", "usbc", "typec", "type-c", "tipo-c", "puerto", "puertos", "cargador", "carga", "dcin", "vbus", "thunderbolt", "tbt", "dock", "hub", "pendrive", "flashdrive", "conector", "cd3215", "cd3217", "cd3218", "tps65988", "ace", "upc" },
+            new[] { "USBC", "USB", "VBUS", "DCIN", "TBT", "UPC" },
+            new[] { "PPDCIN", "PPVBUS", "PP3V3_UPC", "PP20V", "PP" }
+        ),
+        new(
+            "DISPLAY_BACKLIGHT",
+            new[] { "pantalla", "display", "imagen", "video", "backlight", "retroiluminacion", "luz", "brillo", "lcd", "edp", "panel", "oled" },
+            new[] { "BKLT", "EDP", "LCD", "DISP", "PANEL", "BL_" },
+            new[] { "PPVOUT", "PP", "EDP" }
+        ),
+        new(
+            "AUDIO",
+            new[] { "audio", "sonido", "parlante", "parlantes", "altavoz", "altavoces", "bocina", "bocinas", "microfono", "auricular", "auriculares", "audifonos", "jack", "codec", "amp" },
+            new[] { "AUD", "SPK", "SPKR", "CODEC", "AMP", "HP", "MIC" },
+            new[] { "PP3V8_AON_SPK", "PPBUS_SPKR", "PP", "AUD" }
+        ),
+        new(
+            "STORAGE_SSD",
+            new[] { "ssd", "disco", "nand", "nvme", "almacenamiento", "storage", "pcie", "disco duro" },
+            new[] { "SSD", "NAND", "NVME", "PCIE_SSD" },
+            new[] { "PP1V8_SSD", "PP0V9_SSD", "PP" }
+        ),
+        new(
+            "WIRELESS",
+            new[] { "wifi", "wi-fi", "inalambrico", "wireless", "bluetooth", "bt", "antena", "airdrop" },
+            new[] { "WIFI", "WLAN", "WLBT", "BT" },
+            new[] { "PP3V8_AON_WLBT", "PP1V8_WLAN", "PP" }
+        ),
+        new(
+            "INPUT_TRACKPAD_KBD",
+            new[] { "teclado", "keyboard", "trackpad", "touchpad", "cursor", "raton", "mouse", "teclas", "flechas", "kbdled" },
+            new[] { "KBD", "TPAD", "TRACKPAD", "SPI", "I2C", "KBDLED" },
+            new[] { "PP3V3", "PP1V8", "PP" }
+        ),
+        new(
+            "SENSORS_CAMERA",
+            new[] { "camara", "camera", "webcam", "facetime", "sensor", "tapa", "lid", "hall", "als", "luz ambiental" },
+            new[] { "CAM", "CAMERA", "ALS", "LID", "HALL", "SMC_LID" },
+            new[] { "PP3V3", "PP1V8", "PP" }
+        ),
+        new(
+            "CPU_GPU_CORE",
+            new[] { "cpu", "gpu", "procesador", "grafica", "vcore", "ram", "memoria", "ddr", "dram", "soc", "nucleo" },
+            new[] { "VCORE", "CPU", "GPU", "DRAM", "DDR", "SOC" },
+            new[] { "PPVCORE", "PP", "VDD" }
+        ),
+        new(
+            "GENERAL_POWER",
+            new[] { "enciende", "prende", "arranca", "alimentacion", "muerto", "muerta", "standby", "always_on", "aon", "g3h", "s0", "s3", "s5", "sleep", "slp", "consumo", "corto", "cortocircuito", "corriente", "bateria" },
+            new[] { "PPBUS", "AON", "G3H", "PP3V8", "PP3V3", "PP5V" },
+            new[] { "PP3V8_AON", "PPBUS_AON", "PPBUS_G3H", "PP" }
+        )
+    };
+
     private static readonly string[] PeripheralDomainMarkers =
     {
         "T29", "TBT", "FW", "FIREWIRE", "LCDBKLT", "BKL", "ODD", "ALS", "CAMERA", "KBDLED", "SPKR", "AUD_", "AUDIO"
@@ -80,11 +148,6 @@ public class CircuitMazeDebugger
     private static readonly string[] SenseFeedbackMarkers =
     {
         "_ISNS1_", "_ISNS2_", "_ISNS3_", "_ISNS_", "ISNS_", "CHGR_CSI_", "CHGR_CSO_", "_CSIP", "_CSIN", "_CSOP", "_CSON"
-    };
-
-    private static readonly HashSet<string> GenericSymptomKeywords = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "carga", "bateria", "batería", "enciende", "magsafe", "verde", "backlight", "pantalla", "brillo", "corto"
     };
 
     private readonly CircuitGraphBuilder _graph;
@@ -208,13 +271,16 @@ public class CircuitMazeDebugger
         else
         {
             string? targetNet = ExtractTargetNetFromQuery(rawQuery);
-            string displayTarget = targetNet ?? rawQuery.Trim().ToUpperInvariant();
-            resolvedTargetNet = targetNet ?? "PPBUS_G3H";
+            resolvedTargetNet = !string.IsNullOrWhiteSpace(targetNet) ? targetNet : _graph.GetBoardMasterPowerRail();
+            string displayTarget = resolvedTargetNet;
             title = $"Laberinto Dinámico de Señal/Potencia: {displayTarget}";
-            symptomDesc = targetNet != null
-                ? $"Ruta topológica filtrada por bloque funcional en el grafo BRD para la red '{targetNet}'."
-                : $"Ruta topológica calculada automáticamente en el grafo BRD para '{rawQuery}'.";
-            rawSteps = targetNet != null ? BuildDynamicGraphSequence(targetNet) : new List<RawStep>();
+            symptomDesc = $"Ruta topológica calculada en el grafo BRD para '{rawQuery}' (Riel: {resolvedTargetNet}).";
+            rawSteps = BuildDynamicGraphSequence(resolvedTargetNet);
+            if (rawSteps.Count == 0 && resolvedTargetNet != _graph.GetBoardMasterPowerRail())
+            {
+                resolvedTargetNet = _graph.GetBoardMasterPowerRail();
+                rawSteps = BuildDynamicGraphSequence(resolvedTargetNet);
+            }
             warnings.Add(_knowledge.Applicable.Count == 0
                 ? "No hay un flujo curado para esta placa: la ruta se calculó solo con la topología del .brd y los voltajes esperados son una estimación a partir del nombre de la red. Verifícalos contra el esquemático."
                 : "La consulta no coincide con ningún flujo curado: la ruta se calculó solo con la topología del .brd y los voltajes esperados son una estimación a partir del nombre de la red. Verifícalos contra el esquemático.");
@@ -349,12 +415,13 @@ public class CircuitMazeDebugger
 
     /// <summary>
     /// Extrae el nombre de la red objetivo desde una consulta en lenguaje natural o identificador directo.
-    /// Evita pasar una oración entera a SearchNetNames (lo que antes provocaba caer en PPBUS_G3H por defecto).
+    /// Resuelve automáticamente conceptos de dominios electrónicos (USB, audio, backlight, etc.),
+    /// magnitudes de voltaje ("3.3v", "5v", "20v") y recurre dinámicamente al riel maestro de la placa.
     /// </summary>
     public string? ExtractTargetNetFromQuery(string? rawQuery)
     {
         if (string.IsNullOrWhiteSpace(rawQuery))
-            return "PPBUS_G3H";
+            return _graph.GetBoardMasterPowerRail();
 
         string trimmed = rawQuery.Trim();
 
@@ -401,7 +468,33 @@ public class CircuitMazeDebugger
             }
         }
 
-        // 3. Búsqueda directa si es una consulta corta de una sola palabra
+        // 3. Extracción de magnitud de voltaje en lenguaje natural (ej. "3.3v", "5v", "20v", "1.8v", "1v8")
+        var vMatch = VoltageMentionRegex.Match(trimmed);
+        if (vMatch.Success)
+        {
+            string vStr = vMatch.Groups[1].Success ? vMatch.Groups[1].Value.Replace(',', '.') : vMatch.Groups[2].Value;
+            if (double.TryParse(vStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double parsedVolts))
+            {
+                var candidateNet = ResolveNetByVoltage(parsedVolts);
+                if (candidateNet != null) return candidateNet;
+            }
+        }
+
+        // 4. Mapeo semántico de dominios funcionales (USB, Pantalla, Audio, Almacenamiento, etc.)
+        string lowerQuery = trimmed.ToLowerInvariant();
+        foreach (var domain in SemanticDomains)
+        {
+            bool hasDomainHit = domain.Keywords.Any(k => 
+                lowerQuery.Contains(k, StringComparison.OrdinalIgnoreCase));
+
+            if (hasDomainHit)
+            {
+                var domainNet = ResolveNetFromSemanticDomain(domain);
+                if (domainNet != null) return domainNet;
+            }
+        }
+
+        // 5. Búsqueda directa si es una consulta corta de una sola palabra
         if (!trimmed.Contains(' '))
         {
             var direct = _graph.SearchNetNames(trimmed, 5);
@@ -409,11 +502,62 @@ public class CircuitMazeDebugger
                 return direct[0];
         }
 
-        // 4. Si es un síntoma genérico ("no carga", "sin luz verde") en una placa sin flujo curado aplicable, iniciar en PPBUS_G3H
-        if (tokens.Any(t => GenericSymptomKeywords.Contains(t)))
-            return "PPBUS_G3H";
+        // 6. Fallback final dinámico al riel maestro de la placa activa
+        return _graph.GetBoardMasterPowerRail();
+    }
 
-        return null;
+    private string? ResolveNetByVoltage(double volts)
+    {
+        int whole = (int)Math.Floor(volts);
+        int frac = (int)Math.Round((volts - whole) * 100);
+        string vToken = frac > 0 ? $"{whole}V{frac.ToString().TrimEnd('0')}" : $"{whole}V";
+
+        var candidates = _graph.Topology.Nets
+            .Where(n => !n.IsGround && !n.IsUnconnected && n.Pins.Count > 0)
+            .Where(n => n.Name.Contains(vToken, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (candidates.Count == 0) return null;
+
+        return candidates
+            .OrderByDescending(n => n.Name.StartsWith("PP", StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(n => n.Pins.Count)
+            .First().Name;
+    }
+
+    private string? ResolveNetFromSemanticDomain(SemanticDomainDef domain)
+    {
+        var candidates = _graph.Topology.Nets
+            .Where(n => !n.IsGround && !n.IsUnconnected && n.Pins.Count > 0)
+            .Where(n => domain.NetPatterns.Any(p => n.Name.Contains(p, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (candidates.Count == 0) return null;
+
+        var scored = candidates.Select(n =>
+        {
+            int score = n.Pins.Count;
+            string upper = n.Name.ToUpperInvariant();
+
+            if (upper.StartsWith("PP")) score += 2000;
+            for (int i = 0; i < domain.PreferredPrefixes.Length; i++)
+            {
+                var pref = domain.PreferredPrefixes[i];
+                if (upper.StartsWith(pref, StringComparison.OrdinalIgnoreCase) || upper.Contains(pref, StringComparison.OrdinalIgnoreCase))
+                {
+                    score += (domain.PreferredPrefixes.Length - i) * 3000;
+                    break;
+                }
+            }
+
+            if (upper.Contains("_ISNS_") || upper.Contains("ISNS")) score -= 1500;
+
+            return (Net: n, Score: score);
+        })
+        .OrderByDescending(x => x.Score)
+        .First();
+
+        return scored.Net.Name;
     }
 
     /// <summary>

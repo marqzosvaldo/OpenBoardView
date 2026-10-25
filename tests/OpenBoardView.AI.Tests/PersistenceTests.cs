@@ -114,6 +114,7 @@ public class PersistenceTests : IDisposable
     {
         string wsId = await _persistence.InsertWorkspaceAsync("Statistics WS", null);
         string boardId = "820-3115-B";
+        await _persistence.SaveBoardCacheAsync(boardId, wsId, "MacBook Pro A1278", "mock_brd", "mock_pdf", new());
         string symptom = "NO_POWER_200MA";
 
         // Registrar 3 fallas en C7513 y 1 falla en U7000 para el mismo síntoma
@@ -175,6 +176,7 @@ public class PersistenceTests : IDisposable
     {
         string wsId = await _persistence.InsertWorkspaceAsync("Session WS", null);
         string boardId = "820-3115-B";
+        await _persistence.SaveBoardCacheAsync(boardId, wsId, "MacBook Pro A1278", "mock_brd", "mock_pdf", new());
 
         var session = new DiagnosticSessionDto
         {
@@ -208,6 +210,7 @@ public class PersistenceTests : IDisposable
     {
         string wsId = await _persistence.InsertWorkspaceAsync("Telemetry WS", null);
         string boardId = "820-3115-B";
+        await _persistence.SaveBoardCacheAsync(boardId, wsId, "MacBook Pro A1278", "mock_brd", "mock_pdf", new());
 
         var r1 = new RepairRecordDto
         {
