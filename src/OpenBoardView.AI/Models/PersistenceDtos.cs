@@ -118,3 +118,35 @@ public record StepMeasurementDto(
     double? MeasuredImpedance,
     string Status, // "PASSED", "FAILED", "SKIPPED"
     string? Note);
+
+public record StepperNodeDto(
+    int StepNumber,
+    string ComponentId,
+    string Pin,
+    string SignalName,
+    string Mode,
+    string ExpectedNominal,
+    string FaultNominal,
+    int SchematicPage,
+    string Description);
+
+public record ColdImpedanceThresholdsDto(
+    double ShortCircuitThresholdOhms,
+    double NormalMinOhms,
+    string? Notes);
+
+public record KeyIntegrateDto(
+    string ComponentId,
+    string ChipName,
+    string Function,
+    int SchematicPage);
+
+public record DiagnosticPresetDto(
+    string PresetId,
+    string BoardId,
+    string SymptomKey,
+    string SymptomDescription,
+    double ColdShortThresholdReal,
+    double ColdNormalMinReal,
+    string PresetJson,
+    string UpdatedAt);

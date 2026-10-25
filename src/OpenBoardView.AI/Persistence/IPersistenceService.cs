@@ -37,6 +37,11 @@ public interface IPersistenceService
     Task SetSettingAsync(string key, string value);
     Task<string?> GetSettingAsync(string key);
 
+    // Curated Diagnostic Presets (Universal Multi-Model)
+    Task SaveDiagnosticPresetAsync(DiagnosticPresetDto preset);
+    Task<DiagnosticPresetDto?> GetDiagnosticPresetAsync(string boardId, string symptomKey);
+    Task<List<DiagnosticPresetDto>> GetDiagnosticPresetsByBoardAsync(string boardId);
+
     // Vector Embeddings (sqlite-vec)
     bool IsVectorExtensionLoaded { get; }
     Task SaveRepairEmbeddingAsync(string repairId, float[] vector);

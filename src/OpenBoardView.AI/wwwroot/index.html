@@ -629,8 +629,43 @@
         searchListEl.innerHTML = compOpts.concat(netOpts).join('');
       }
 
+      await loadBoardPresets();
       resetView();
       requestAnimationFrame(animateLoop);
+    }
+
+    async function loadBoardPresets() {
+      try {
+        const res = await fetch('/api/board/presets');
+        if (!res.ok) return;
+        const presets = await res.json();
+        const select = document.getElementById('mazePresetSelect');
+        if (!select || !presets || presets.length === 0) return;
+
+        select.innerHTML = '';
+        presets.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.symptomKey;
+          const targetNet = p.symptomKey.includes('PP3V8') ? 'PP3V8_AON' : p.symptomKey.replace(/_MISSING$/i, '');
+          opt.dataset.net = targetNet;
+          opt.textContent = `🎯 Síntoma Curado: ${p.symptomKey} (6 pasos)`;
+          select.appendChild(opt);
+        });
+
+        const defOpts = [
+          { val: 'no carga', net: 'PPBUS_G3H', text: '🔋 Genérico: PPBUS_G3H Ausente' },
+          { val: 'sin backlight', net: 'PPVOUT_SW_LCDBKLT', text: '🖥 Genérico: Backlight Ausente' }
+        ];
+        defOpts.forEach(o => {
+          const opt = document.createElement('option');
+          opt.value = o.val;
+          opt.dataset.net = o.net;
+          opt.textContent = o.text;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        console.debug('Presets no cargados:', e);
+      }
     }
 
     function onSimNetChanged(val) {

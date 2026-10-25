@@ -186,11 +186,24 @@ public class SqlitePersistenceService : IPersistenceService
                     UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                 );
 
+                -- 8. Tabla de Presets Curados de Diagnóstico (Universal Multi-Modelo)
+                CREATE TABLE IF NOT EXISTS DiagnosticPresets (
+                    PresetId TEXT PRIMARY KEY,
+                    BoardId TEXT NOT NULL,
+                    SymptomKey TEXT NOT NULL,
+                    SymptomDescription TEXT,
+                    ColdShortThresholdReal REAL,
+                    ColdNormalMinReal REAL,
+                    PresetJson TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+
                 -- Índices para búsquedas de alto rendimiento
                 CREATE INDEX IF NOT EXISTS idx_workspace_files ON WorkspaceFiles(WorkspaceId);
                 CREATE INDEX IF NOT EXISTS idx_boards_hashes ON Boards(BrdHash, PdfHash);
                 CREATE INDEX IF NOT EXISTS idx_repair_lookup ON RepairHistory(BoardId, SymptomKey);
                 CREATE INDEX IF NOT EXISTS idx_repair_sync ON RepairHistory(SyncStatus);
+                CREATE INDEX IF NOT EXISTS idx_presets_board_symptom ON DiagnosticPresets(BoardId, SymptomKey);
             ";
             await ddlCmd.ExecuteNonQueryAsync();
         }
@@ -892,6 +905,98 @@ public class SqlitePersistenceService : IPersistenceService
         cmd.Parameters.AddWithValue("$key", key);
         var result = await cmd.ExecuteScalarAsync();
         return result != null && result != DBNull.Value ? result.ToString() : null;
+    }
+
+    #endregion
+
+    #region Diagnostic Presets (Universal Multi-Model)
+
+    public async Task SaveDiagnosticPresetAsync(DiagnosticPresetDto preset)
+    {
+        using var connection = await OpenConnectionAsync();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO DiagnosticPresets 
+            (PresetId, BoardId, SymptomKey, SymptomDescription, ColdShortThresholdReal, ColdNormalMinReal, PresetJson, UpdatedAt)
+            VALUES ($presetId, $boardId, $symptomKey, $symptomDesc, $shortThreshold, $normalMin, $presetJson, datetime('now'))
+            ON CONFLICT(PresetId) DO UPDATE SET
+                BoardId = excluded.BoardId,
+                SymptomKey = excluded.SymptomKey,
+                SymptomDescription = excluded.SymptomDescription,
+                ColdShortThresholdReal = excluded.ColdShortThresholdReal,
+                ColdNormalMinReal = excluded.ColdNormalMinReal,
+                PresetJson = excluded.PresetJson,
+                UpdatedAt = datetime('now');
+        ";
+        cmd.Parameters.AddWithValue("$presetId", preset.PresetId);
+        cmd.Parameters.AddWithValue("$boardId", preset.BoardId);
+        cmd.Parameters.AddWithValue("$symptomKey", preset.SymptomKey);
+        cmd.Parameters.AddWithValue("$symptomDesc", preset.SymptomDescription);
+        cmd.Parameters.AddWithValue("$shortThreshold", preset.ColdShortThresholdReal);
+        cmd.Parameters.AddWithValue("$normalMin", preset.ColdNormalMinReal);
+        cmd.Parameters.AddWithValue("$presetJson", preset.PresetJson);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<DiagnosticPresetDto?> GetDiagnosticPresetAsync(string boardId, string symptomKey)
+    {
+        using var connection = await OpenConnectionAsync();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT PresetId, BoardId, SymptomKey, SymptomDescription, ColdShortThresholdReal, ColdNormalMinReal, PresetJson, UpdatedAt
+            FROM DiagnosticPresets
+            WHERE (BoardId = $boardId OR $boardId LIKE '%' || BoardId || '%' OR BoardId LIKE '%' || $boardId || '%')
+              AND (SymptomKey = $symptomKey OR $symptomKey LIKE '%' || SymptomKey || '%')
+            LIMIT 1;
+        ";
+        cmd.Parameters.AddWithValue("$boardId", boardId);
+        cmd.Parameters.AddWithValue("$symptomKey", symptomKey);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return new DiagnosticPresetDto(
+                PresetId: reader.GetString(0),
+                BoardId: reader.GetString(1),
+                SymptomKey: reader.GetString(2),
+                SymptomDescription: reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                ColdShortThresholdReal: reader.GetDouble(4),
+                ColdNormalMinReal: reader.GetDouble(5),
+                PresetJson: reader.GetString(6),
+                UpdatedAt: reader.GetString(7)
+            );
+        }
+        return null;
+    }
+
+    public async Task<List<DiagnosticPresetDto>> GetDiagnosticPresetsByBoardAsync(string boardId)
+    {
+        using var connection = await OpenConnectionAsync();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT PresetId, BoardId, SymptomKey, SymptomDescription, ColdShortThresholdReal, ColdNormalMinReal, PresetJson, UpdatedAt
+            FROM DiagnosticPresets
+            WHERE BoardId = $boardId OR $boardId LIKE '%' || BoardId || '%' OR BoardId LIKE '%' || $boardId || '%'
+            ORDER BY SymptomKey ASC;
+        ";
+        cmd.Parameters.AddWithValue("$boardId", boardId);
+
+        var list = new List<DiagnosticPresetDto>();
+        using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            list.Add(new DiagnosticPresetDto(
+                PresetId: reader.GetString(0),
+                BoardId: reader.GetString(1),
+                SymptomKey: reader.GetString(2),
+                SymptomDescription: reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                ColdShortThresholdReal: reader.GetDouble(4),
+                ColdNormalMinReal: reader.GetDouble(5),
+                PresetJson: reader.GetString(6),
+                UpdatedAt: reader.GetString(7)
+            ));
+        }
+        return list;
     }
 
     #endregion

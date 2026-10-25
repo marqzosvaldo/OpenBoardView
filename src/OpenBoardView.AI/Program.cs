@@ -30,6 +30,9 @@ builder.Services.AddSingleton<IPersistenceService>(sp =>
 // Administrador de Espacios de Trabajo Multi-Archivo (v4)
 builder.Services.AddSingleton<IWorkspaceService, WorkspaceService>();
 
+// Servicio Universal de Importación de Presets y Plantillas de Diagnóstico (v4)
+builder.Services.AddSingleton<IPresetImporterService, PresetImporterService>();
+
 // Servicio de Sincronización en Segundo Plano hacia la Nube (v4)
 builder.Services.AddHttpClient<BackgroundSyncWorker>();
 builder.Services.AddHostedService<BackgroundSyncWorker>();
@@ -132,6 +135,17 @@ if (args.Contains("--test-persistence"))
 // Inicializar gestor dinámico de circuitos y cargar workspace activo o predeterminado
 var circuitManager = app.Services.GetRequiredService<ActiveCircuitManager>();
 await circuitManager.InitializeDefaultAsync(args);
+
+// Auto-seed de plantillas curadas de diagnóstico (Presets) en SQLite
+var presetImporter = app.Services.GetRequiredService<IPresetImporterService>();
+string presetsDir = Path.Combine(app.Environment.ContentRootPath, "Presets");
+if (Directory.Exists(presetsDir))
+{
+    foreach (var presetFile in Directory.GetFiles(presetsDir, "*.json"))
+    {
+        await presetImporter.ImportPresetFromJsonAsync(presetFile);
+    }
+}
 
 if (args.Contains("--verify") || args.Contains("--ask"))
 {
@@ -270,6 +284,13 @@ app.MapGet("/api/board/geometry", (CircuitGraphBuilder graph) =>
             })
         })
     });
+});
+
+app.MapGet("/api/board/presets", async (ActiveCircuitManager circuitManager, IPresetImporterService importer) =>
+{
+    var board = circuitManager.ActiveBoardName ?? "820-02757";
+    var presets = await importer.GetPresetsForBoardAsync(board);
+    return Results.Ok(presets);
 });
 
 app.MapGet("/api/board/net/{netName}/quadrants", (string netName, BoardDiagnosticsTools tools) =>
