@@ -11,6 +11,8 @@ public interface IPersistenceService
     Task<List<WorkspaceSummaryDto>> GetAllWorkspacesAsync();
     Task<WorkspaceDetailDto?> GetWorkspaceByIdAsync(string workspaceId);
     Task DeleteWorkspaceAsync(string workspaceId);
+    Task UpdateWorkspaceAnalysisStatusAsync(string workspaceId, string status, string? activePresetId = null, string? summary = null);
+    Task<(string Status, string? ActivePresetId, string? Summary)> GetWorkspaceAnalysisStatusAsync(string workspaceId);
     Task AddWorkspaceFileAsync(WorkspaceFileDto file);
     Task<List<WorkspaceFileDto>> GetWorkspaceFilesAsync(string workspaceId);
     Task DeleteWorkspaceFileAsync(string fileId);

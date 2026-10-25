@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using OpenBoardView.AI.Models;
+using OpenBoardView.AI.Persistence;
 using OpenBoardView.AI.Services;
 
 namespace OpenBoardView.AI.Controllers;
@@ -11,11 +12,19 @@ public class WorkspacesController : ControllerBase
 {
     private readonly IWorkspaceService _workspaceService;
     private readonly ActiveCircuitManager _activeCircuitManager;
+    private readonly AutomatedSchematicAnalyzer _schematicAnalyzer;
+    private readonly IPersistenceService _persistence;
 
-    public WorkspacesController(IWorkspaceService workspaceService, ActiveCircuitManager activeCircuitManager)
+    public WorkspacesController(
+        IWorkspaceService workspaceService, 
+        ActiveCircuitManager activeCircuitManager,
+        AutomatedSchematicAnalyzer schematicAnalyzer,
+        IPersistenceService persistence)
     {
         _workspaceService = workspaceService;
         _activeCircuitManager = activeCircuitManager;
+        _schematicAnalyzer = schematicAnalyzer;
+        _persistence = persistence;
     }
 
     [HttpGet]
@@ -54,7 +63,8 @@ public class WorkspacesController : ControllerBase
     public async Task<IActionResult> CreateWorkspace(
         [FromForm] string name, 
         [FromForm] string? description, 
-        [FromForm] List<IFormFile> files)
+        [FromForm] List<IFormFile> files,
+        [FromForm] bool autoAnalyze = false)
     {
         if (string.IsNullOrWhiteSpace(name))
             return BadRequest(new { error = "El nombre del espacio de trabajo es requerido." });
@@ -84,7 +94,62 @@ public class WorkspacesController : ControllerBase
 
         var workspace = await _workspaceService.CreateWorkspaceAsync(name, description, fileRequests);
         await _activeCircuitManager.SwitchToWorkspaceAsync(workspace.WorkspaceId);
+
+        if (autoAnalyze)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _schematicAnalyzer.ProcessWorkspaceSchematicAsync(workspace.WorkspaceId);
+                }
+                catch
+                {
+                    // Manejado internamente en AutomatedSchematicAnalyzer con log y persistencia de fallos
+                }
+            });
+        }
+
         return Ok(workspace);
+    }
+
+    [HttpPost("{id}/trigger-analysis")]
+    public async Task<IActionResult> TriggerSchematicAnalysis(string id)
+    {
+        var ws = await _workspaceService.GetWorkspaceByIdAsync(id);
+        if (ws == null) return NotFound(new { error = $"Espacio de trabajo '{id}' no encontrado." });
+
+        var status = await _persistence.GetWorkspaceAnalysisStatusAsync(id);
+        if (status.Status == "Processing" || status.Status == "Queued")
+        {
+            return Conflict(new { message = "El análisis ya se encuentra en ejecución en segundo plano.", status = status.Status });
+        }
+
+        await _persistence.UpdateWorkspaceAnalysisStatusAsync(id, "Queued", summary: "En cola para análisis de esquemático con IA...");
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _schematicAnalyzer.ProcessWorkspaceSchematicAsync(id);
+            }
+            catch
+            {
+                // Manejado internamente en AutomatedSchematicAnalyzer
+            }
+        });
+
+        return Ok(new { success = true, message = "Análisis autónomo de esquemático iniciado en segundo plano.", status = "Queued" });
+    }
+
+    [HttpGet("{id}/analysis-status")]
+    public async Task<IActionResult> GetWorkspaceAnalysisStatus(string id)
+    {
+        var ws = await _workspaceService.GetWorkspaceByIdAsync(id);
+        if (ws == null) return NotFound(new { error = $"Espacio de trabajo '{id}' no encontrado." });
+
+        var status = await _persistence.GetWorkspaceAnalysisStatusAsync(id);
+        return Ok(new { status = status.Status, activePresetId = status.ActivePresetId, summary = status.Summary });
     }
 
     [HttpPost("{id}/files")]

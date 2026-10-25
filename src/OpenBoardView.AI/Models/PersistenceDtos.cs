@@ -7,7 +7,10 @@ public record WorkspaceSummaryDto(
     int FileCount,
     int SyncStatus,
     string UpdatedAt,
-    string CreatedAt);
+    string CreatedAt,
+    string AnalysisStatus = "NotRequested",
+    string? ActivePresetId = null,
+    string? AnalysisSummary = null);
 
 public record WorkspaceDetailDto(
     string WorkspaceId,
@@ -17,7 +20,10 @@ public record WorkspaceDetailDto(
     string UpdatedAt,
     string CreatedAt,
     List<WorkspaceFileDto> Files,
-    List<BoardSummaryDto> Boards);
+    List<BoardSummaryDto> Boards,
+    string AnalysisStatus = "NotRequested",
+    string? ActivePresetId = null,
+    string? AnalysisSummary = null);
 
 public record WorkspaceDto(
     string WorkspaceId,
@@ -26,7 +32,10 @@ public record WorkspaceDto(
     int SyncStatus,
     string UpdatedAt,
     string CreatedAt,
-    List<WorkspaceFileDto> Files);
+    List<WorkspaceFileDto> Files,
+    string AnalysisStatus = "NotRequested",
+    string? ActivePresetId = null,
+    string? AnalysisSummary = null);
 
 public record WorkspaceFileDto(
     string FileId,

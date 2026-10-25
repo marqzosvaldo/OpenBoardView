@@ -33,6 +33,9 @@ builder.Services.AddSingleton<IWorkspaceService, WorkspaceService>();
 // Servicio Universal de Importación de Presets y Plantillas de Diagnóstico (v4)
 builder.Services.AddSingleton<IPresetImporterService, PresetImporterService>();
 
+// Motor Autónomo de Análisis de Esquemáticos con Optimización de Tokens (v4)
+builder.Services.AddSingleton<AutomatedSchematicAnalyzer>();
+
 // Servicio de Sincronización en Segundo Plano hacia la Nube (v4)
 builder.Services.AddHttpClient<BackgroundSyncWorker>();
 builder.Services.AddHostedService<BackgroundSyncWorker>();

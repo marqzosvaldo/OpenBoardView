@@ -522,6 +522,22 @@
           <span id="mazeHeaderTitle">🧭 Stepper: <span id="symptomLabel" style="color:#4ade80;">PPBUS_G3H</span></span>
           <span id="mazeStepCounter" style="color:#fef08a;">LISTO</span>
         </div>
+
+        <!-- Banner de Análisis Autónomo Bajo Demanda (0 Tokens por Defecto) -->
+        <div id="bannerDemandAnalysis" style="display:none; margin-bottom:8px; padding:8px 10px; background:rgba(30,41,59,0.7); border:1px solid #334155; border-radius:6px; font-size:11px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <span style="color:#94a3b8;">Modo:</span> <b id="analysisModeLabel" style="color:#38bdf8;">Topológico Local (0 Tokens)</b>
+            </div>
+            <button id="btnTriggerAiAnalysis" onclick="triggerAiAnalysis()" style="background:#0284c7; border:1px solid #38bdf8; color:#fff; font-size:11px; padding:3px 8px; border-radius:4px; font-weight:600; cursor:pointer;">
+              ⚡ Analizar Esquemático con IA
+            </button>
+          </div>
+          <div id="demandAnalysisStatusText" style="color:#94a3b8; font-size:10px; margin-top:4px;">
+            Deduce secuencia experta de encendido y umbrales de seguridad en frío desde el PDF esquemático (~8k tokens).
+          </div>
+        </div>
+
         <div class="psu-row" style="margin-bottom:8px;">
           <select id="mazePresetSelect" onchange="startMazeDebugger(this.value, 1, null)"
                   style="flex:1; background:#090d16; color:#38bdf8; font-weight:600; border:1px solid #334155; padding:5px 8px; border-radius:4px; font-size:12px;">
@@ -1494,6 +1510,19 @@
             loadWorkspaces();
             return;
           }
+          if (cmd.action === 'schematic_analysis_status') {
+            updateDemandAnalysisBanner('Processing', cmd.message);
+            return;
+          }
+          if (cmd.action === 'schematic_analysis_completed') {
+            updateDemandAnalysisBanner('Completed', cmd.message);
+            await loadBoardPresets();
+            const select = document.getElementById('mazePresetSelect');
+            if (select && select.value) {
+              startMazeDebugger(select.value, 1, null);
+            }
+            return;
+          }
           if (cmd.simulation) {
             applySimulationResult(cmd.simulation);
           }
@@ -1603,6 +1632,7 @@
             const activeWs = await activeRes.json();
             if (activeWs && activeWs.workspaceId) {
               selector.value = activeWs.workspaceId;
+              checkWorkspaceAnalysisStatus(activeWs.workspaceId);
             }
           }
         } catch {}
@@ -1610,6 +1640,102 @@
         renderWorkspaceList(list);
       } catch (e) {
         console.warn('No se pudieron cargar los workspaces:', e);
+      }
+    }
+
+    async function checkWorkspaceAnalysisStatus(wsId) {
+      const banner = document.getElementById('bannerDemandAnalysis');
+      if (!banner) return;
+      if (!wsId) {
+        banner.style.display = 'none';
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/workspaces/${wsId}/analysis-status`);
+        if (!res.ok) {
+          banner.style.display = 'none';
+          return;
+        }
+        const data = await res.json();
+        updateDemandAnalysisBanner(data.status, data.summary);
+      } catch (e) {
+        banner.style.display = 'none';
+      }
+    }
+
+    function updateDemandAnalysisBanner(status, summary) {
+      const banner = document.getElementById('bannerDemandAnalysis');
+      const modeLbl = document.getElementById('analysisModeLabel');
+      const btn = document.getElementById('btnTriggerAiAnalysis');
+      const text = document.getElementById('demandAnalysisStatusText');
+      if (!banner || !modeLbl || !btn || !text) return;
+
+      banner.style.display = 'block';
+
+      if (status === 'Completed') {
+        modeLbl.textContent = 'Secuencia Experta Activa (IA)';
+        modeLbl.style.color = '#4ade80';
+        btn.disabled = true;
+        btn.textContent = '✔ Generado';
+        btn.style.background = '#15803d';
+        btn.style.borderColor = '#22c55e';
+        text.textContent = summary || 'Secuencia lógica de encendido y umbrales de frío cargados en el Stepper.';
+      } else if (status === 'Processing' || status === 'Queued') {
+        modeLbl.textContent = 'Analizando Esquemático...';
+        modeLbl.style.color = '#facc15';
+        btn.disabled = true;
+        btn.textContent = '⏳ Procesando...';
+        btn.style.background = '#854d0e';
+        btn.style.borderColor = '#eab308';
+        text.textContent = summary || 'Extrayendo páginas clave de potencia y consultando LLM...';
+      } else if (status === 'Failed') {
+        modeLbl.textContent = 'Modo Topológico Local (0 Tokens)';
+        modeLbl.style.color = '#f87171';
+        btn.disabled = false;
+        btn.textContent = '⚡ Reintentar Análisis con IA';
+        btn.style.background = '#b91c1c';
+        btn.style.borderColor = '#f87171';
+        text.textContent = summary || 'Falló el análisis previo. Puedes reintentar.';
+      } else {
+        // None, Pending
+        modeLbl.textContent = 'Topológico Local (0 Tokens)';
+        modeLbl.style.color = '#38bdf8';
+        btn.disabled = false;
+        btn.textContent = '⚡ Analizar Esquemático con IA';
+        btn.style.background = '#0284c7';
+        btn.style.borderColor = '#38bdf8';
+        text.textContent = summary || 'Deduce secuencia experta de encendido y umbrales de seguridad en frío desde el PDF esquemático (~8k tokens).';
+      }
+    }
+
+    async function triggerAiAnalysis() {
+      const selector = document.getElementById('workspaceSelector');
+      const wsId = selector ? selector.value : null;
+      if (!wsId) {
+        alert('Selecciona un espacio de trabajo primero.');
+        return;
+      }
+
+      const btn = document.getElementById('btnTriggerAiAnalysis');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Iniciando...';
+      }
+
+      try {
+        const res = await fetch(`/api/workspaces/${wsId}/trigger-analysis`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Error del servidor' }));
+          throw new Error(err.message || err.error || 'Error al iniciar análisis');
+        }
+        updateDemandAnalysisBanner('Processing', 'Análisis en segundo plano iniciado...');
+      } catch (e) {
+        alert('Error al iniciar análisis: ' + e.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '⚡ Analizar Esquemático con IA';
+        }
       }
     }
 
@@ -1659,6 +1785,7 @@
         activeMazeTrace = null;
         const sel = document.getElementById('workspaceSelector');
         if (sel && sel.value !== wsId) sel.value = wsId;
+        await checkWorkspaceAnalysisStatus(wsId);
       } catch (e) {
         console.error('Error al cambiar de espacio:', e);
       }
@@ -1750,6 +1877,8 @@
       const formData = new FormData();
       formData.append('name', name);
       if (desc) formData.append('description', desc);
+      const autoAnalyze = document.getElementById('chkAutoAnalyze') ? document.getElementById('chkAutoAnalyze').checked : false;
+      formData.append('autoAnalyze', autoAnalyze);
       for (const f of stagedWsFiles) {
         formData.append('files', f);
       }
@@ -1764,6 +1893,7 @@
         alert(`¡Espacio '${created.name}' creado con éxito con ${created.files.length} archivos!`);
         document.getElementById('newWsName').value = '';
         document.getElementById('newWsDesc').value = '';
+        if (document.getElementById('chkAutoAnalyze')) document.getElementById('chkAutoAnalyze').checked = false;
         stagedWsFiles = [];
         closeWorkspaceModal();
         await loadWorkspaces();
@@ -1853,6 +1983,10 @@
     async function initApp() {
       await loadWorkspaces();
       await loadBoardGeometry();
+      const sel = document.getElementById('workspaceSelector');
+      if (sel && sel.value) {
+        await checkWorkspaceAnalysisStatus(sel.value);
+      }
       connectWebSocket();
     }
     initApp();
@@ -1884,6 +2018,13 @@
           </div>
 
           <div id="wsStagedFilesList" style="margin-top:8px; display:flex; flex-direction:column; gap:4px; max-height:120px; overflow-y:auto;"></div>
+
+          <div style="display:flex; align-items:center; gap:8px; margin-top:8px; padding:8px 10px; background:rgba(56,189,248,0.06); border:1px solid #1e293b; border-radius:6px;">
+            <input type="checkbox" id="chkAutoAnalyze" style="cursor:pointer;" />
+            <label for="chkAutoAnalyze" style="font-size:11px; color:#cbd5e1; cursor:pointer;">
+              ⚡ <b>Analizar esquemático con IA al crear</b> <span style="color:#94a3b8;">(~8k tokens optimizados vía PdfPig. Si se desmarca: 0 tokens / Modo local)</span>
+            </label>
+          </div>
         </div>
       </div>
       <div class="modal-footer">

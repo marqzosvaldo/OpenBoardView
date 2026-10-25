@@ -101,6 +101,9 @@ public class SqlitePersistenceService : IPersistenceService
                     Name TEXT NOT NULL,
                     Description TEXT,
                     SyncStatus INTEGER DEFAULT 0,
+                    AnalysisStatus TEXT DEFAULT 'NotRequested',
+                    ActivePresetId TEXT,
+                    AnalysisSummary TEXT,
                     UpdatedAt TEXT NOT NULL DEFAULT (datetime('now')),
                     CreatedAt TEXT NOT NULL DEFAULT (datetime('now'))
                 );
@@ -208,6 +211,31 @@ public class SqlitePersistenceService : IPersistenceService
             await ddlCmd.ExecuteNonQueryAsync();
         }
 
+        // Migración segura para columnas de análisis autónomo en Workspaces
+        try
+        {
+            using var alterCmd = connection.CreateCommand();
+            alterCmd.CommandText = "ALTER TABLE Workspaces ADD COLUMN AnalysisStatus TEXT DEFAULT 'NotRequested';";
+            await alterCmd.ExecuteNonQueryAsync();
+        }
+        catch {}
+
+        try
+        {
+            using var alterCmd = connection.CreateCommand();
+            alterCmd.CommandText = "ALTER TABLE Workspaces ADD COLUMN ActivePresetId TEXT;";
+            await alterCmd.ExecuteNonQueryAsync();
+        }
+        catch {}
+
+        try
+        {
+            using var alterCmd = connection.CreateCommand();
+            alterCmd.CommandText = "ALTER TABLE Workspaces ADD COLUMN AnalysisSummary TEXT;";
+            await alterCmd.ExecuteNonQueryAsync();
+        }
+        catch {}
+
         // 4. Crear tabla virtual vectorial únicamente si la extensión sqlite-vec se cargó
         if (_isVectorExtensionLoaded)
         {
@@ -259,7 +287,9 @@ public class SqlitePersistenceService : IPersistenceService
         cmd.CommandText = @"
             SELECT w.WorkspaceId, w.Name, w.Description, 
                    COUNT(f.FileId) as FileCount, 
-                   w.SyncStatus, w.UpdatedAt, w.CreatedAt
+                   w.SyncStatus, w.UpdatedAt, w.CreatedAt,
+                   COALESCE(w.AnalysisStatus, 'NotRequested') as AnalysisStatus,
+                   w.ActivePresetId, w.AnalysisSummary
             FROM Workspaces w
             LEFT JOIN WorkspaceFiles f ON w.WorkspaceId = f.WorkspaceId
             GROUP BY w.WorkspaceId
@@ -277,7 +307,10 @@ public class SqlitePersistenceService : IPersistenceService
                 FileCount: reader.GetInt32(3),
                 SyncStatus: reader.GetInt32(4),
                 UpdatedAt: reader.GetString(5),
-                CreatedAt: reader.GetString(6)
+                CreatedAt: reader.GetString(6),
+                AnalysisStatus: reader.IsDBNull(7) ? "NotRequested" : reader.GetString(7),
+                ActivePresetId: reader.IsDBNull(8) ? null : reader.GetString(8),
+                AnalysisSummary: reader.IsDBNull(9) ? null : reader.GetString(9)
             ));
         }
         return list;
@@ -288,7 +321,8 @@ public class SqlitePersistenceService : IPersistenceService
         using var connection = await OpenConnectionAsync();
         using var cmd = connection.CreateCommand();
         cmd.CommandText = @"
-            SELECT WorkspaceId, Name, Description, SyncStatus, UpdatedAt, CreatedAt
+            SELECT WorkspaceId, Name, Description, SyncStatus, UpdatedAt, CreatedAt,
+                   COALESCE(AnalysisStatus, 'NotRequested'), ActivePresetId, AnalysisSummary
             FROM Workspaces
             WHERE WorkspaceId = $id;
         ";
@@ -307,7 +341,10 @@ public class SqlitePersistenceService : IPersistenceService
                     UpdatedAt: reader.GetString(4),
                     CreatedAt: reader.GetString(5),
                     Files: new List<WorkspaceFileDto>(),
-                    Boards: new List<BoardSummaryDto>()
+                    Boards: new List<BoardSummaryDto>(),
+                    AnalysisStatus: reader.IsDBNull(6) ? "NotRequested" : reader.GetString(6),
+                    ActivePresetId: reader.IsDBNull(7) ? null : reader.GetString(7),
+                    AnalysisSummary: reader.IsDBNull(8) ? null : reader.GetString(8)
                 );
             }
         }
@@ -327,6 +364,48 @@ public class SqlitePersistenceService : IPersistenceService
         cmd.CommandText = "DELETE FROM Workspaces WHERE WorkspaceId = $id;";
         cmd.Parameters.AddWithValue("$id", workspaceId);
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task UpdateWorkspaceAnalysisStatusAsync(string workspaceId, string status, string? activePresetId = null, string? summary = null)
+    {
+        using var connection = await OpenConnectionAsync();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            UPDATE Workspaces
+            SET AnalysisStatus = $status,
+                ActivePresetId = COALESCE($presetId, ActivePresetId),
+                AnalysisSummary = COALESCE($summary, AnalysisSummary),
+                UpdatedAt = datetime('now')
+            WHERE WorkspaceId = $id;
+        ";
+        cmd.Parameters.AddWithValue("$status", status);
+        cmd.Parameters.AddWithValue("$presetId", (object?)activePresetId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$summary", (object?)summary ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", workspaceId);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<(string Status, string? ActivePresetId, string? Summary)> GetWorkspaceAnalysisStatusAsync(string workspaceId)
+    {
+        using var connection = await OpenConnectionAsync();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(AnalysisStatus, 'NotRequested'), ActivePresetId, AnalysisSummary
+            FROM Workspaces
+            WHERE WorkspaceId = $id;
+        ";
+        cmd.Parameters.AddWithValue("$id", workspaceId);
+
+        using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return (
+                Status: reader.GetString(0),
+                ActivePresetId: reader.IsDBNull(1) ? null : reader.GetString(1),
+                Summary: reader.IsDBNull(2) ? null : reader.GetString(2)
+            );
+        }
+        return ("NotRequested", null, null);
     }
 
     public async Task AddWorkspaceFileAsync(WorkspaceFileDto file)
