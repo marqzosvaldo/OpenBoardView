@@ -352,16 +352,99 @@
       font-size: 12px;
       width: 155px;
     }
+
+    /* Modales v4: Workspaces y Memoria Histórica */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-box {
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      width: 580px;
+      max-width: 95vw;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      color: #38bdf8;
+    }
+    .modal-body {
+      padding: 16px 18px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+    .modal-footer {
+      padding: 12px 18px;
+      border-top: 1px solid #1e293b;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      background: #090d16;
+    }
+    .drop-zone {
+      border: 2px dashed #38bdf8;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      background: rgba(56, 189, 248, 0.04);
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 10px;
+    }
+    .drop-zone.drag-over {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: #22c55e;
+    }
+    .file-role-badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .role-cad { background: rgba(56,189,248,0.2); color: #7dd3fc; border: 1px solid #38bdf8; }
+    .role-schem-prim { background: rgba(34,197,94,0.2); color: #86efac; border: 1px solid #22c55e; }
+    .role-schem-alt { background: rgba(245,158,11,0.2); color: #fde68a; border: 1px solid #f59e0b; }
+    .role-aux { background: rgba(168,85,247,0.2); color: #d8b4fe; border: 1px solid #a855f7; }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
       <span>OpenBoardView AI</span>
-      <span class="badge">.NET 10 + Simulador DC & Térmico</span>
+      <span class="badge">.NET 10 + v4 Persistencia</span>
       <span id="activeSymptomBadge" class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.4);">Síntoma: PPBUS_G3H (9 pasos)</span>
       <span id="boardTitle" style="color: var(--text-muted); font-weight: 400; font-size: 12px;">Cargando...</span>
     </div>
+
+    <!-- Selector de Espacio de Trabajo v4 y Acciones Rápidas -->
+    <div style="display:flex; align-items:center; gap:8px;">
+      <select id="workspaceSelector" onchange="switchWorkspace(this.value)" style="background:#090d16; color:#38bdf8; font-weight:600; border:1px solid #334155; padding:5px 8px; border-radius:6px; font-size:12px;">
+        <option value="">📁 Espacio Predeterminado</option>
+      </select>
+      <button onclick="openWorkspaceModal()" style="border-color:#38bdf8; color:#38bdf8;" title="Administrar Espacios y Arrastrar y Soltar Archivos">📁 + Espacio</button>
+      <button onclick="openRecordRepairModal()" style="border-color:#22c55e; color:#86efac;" title="Guardar caso resuelto en la memoria histórica">💾 Caso Resuelto</button>
+      <span class="badge" style="background:rgba(56,189,248,0.12); border-color:#0284c7; color:#7dd3fc;" title="Arquitectura Local-First con sincronización en segundo plano">☁️ Local-First</span>
+    </div>
+
     <div class="toolbar">
       <input type="text" id="compSearchInput" list="allBoardSearchList" class="search-box" placeholder="Comp o Red (ej. F7040)" onchange="searchFromInput()" />
       <datalist id="allBoardSearchList"></datalist>
@@ -805,6 +888,11 @@
       const branchBadgeHtml = step.branch
         ? `<div style="margin-bottom:4px;"><span style="background:rgba(56,189,248,0.16); border:1px solid #38bdf8; color:#7dd3fc; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:700;">🌿 ${step.branch}</span></div>`
         : '';
+      const probBadgeHtml = (step.failureProbability && step.failureProbability > 0)
+        ? `<div style="margin-top:5px; margin-bottom:5px; padding:4px 8px; background:rgba(239,68,68,0.22); border:1px solid #ef4444; border-radius:5px; color:#fca5a5; font-size:11px; font-weight:700;">
+            ⚡ Probabilidad Histórica de Falla: ${step.failureProbability.toFixed(0)}% (${step.historicalFailureCount} casos en taller)
+          </div>`
+        : '';
       const sourceLabelHtml = step.dataSource === 'inferred'
         ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.15); border:1px solid #f59e0b; border-radius:4px; color:#fde68a; font-size:10.5px;">⚠ <b>Voltaje estimado</b> a partir del nombre de la red (no leído del esquemático). Verifícalo en el PDF antes de concluir.</div>`
         : step.dataSource === 'bridged'
@@ -813,6 +901,7 @@
 
       document.getElementById('mazeStepDetails').innerHTML = `
         ${branchBadgeHtml}
+        ${probBadgeHtml}
         <div style="font-weight:700; color:${blockedStep === step.stepNumber ? '#ef4444' : '#38bdf8'}; margin-bottom:3px;">
           ${step.stageTitle}
         </div>
@@ -824,6 +913,9 @@
         ${step.componentFound === false ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:4px; color:#fecaca; font-size:10.5px;">⚠ <b>${step.componentId}</b> no existe en la placa cargada; la posición mostrada es aproximada.</div>` : ''}
         ${(activeMazeTrace.warnings && activeMazeTrace.warnings.length && step.stepNumber === 1) ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.12); border:1px solid #92400e; border-radius:4px; color:#fcd34d; font-size:10.5px;">ℹ ${activeMazeTrace.warnings[0]}</div>` : ''}
         ${blockedStep === step.stepNumber ? `<div style="margin-top:6px; padding:5px; background:rgba(239,68,68,0.18); border:1px solid #ef4444; border-radius:4px; color:#fecaca; font-size:11px;"><b>🛑 Diagnóstico de Bloqueo:</b> ${step.failDiagnosis}</div>` : ''}
+        <div style="margin-top:8px;">
+          <button onclick="openRecordRepairModal('${step.componentId}', '${step.outputNet}')" style="border-color:#22c55e; color:#86efac; font-size:11px; padding:3px 7px;">💾 Marcar como Falla Resuelta</button>
+        </div>
       `;
 
       document.getElementById('lcdVolt').textContent = blockedStep === step.stepNumber
@@ -1382,8 +1474,360 @@
       chatHistory.scrollTop = chatHistory.scrollHeight;
     }
 
+    // ==========================================
+    // Módulos v4: Workspaces, Drag & Drop y Reparaciones
+    // ==========================================
+    let stagedWsFiles = [];
+
+    async function loadWorkspaces() {
+      try {
+        const res = await fetch('/api/workspaces');
+        if (!res.ok) return;
+        const list = await res.json();
+        const selector = document.getElementById('workspaceSelector');
+        selector.innerHTML = '';
+
+        if (!list || list.length === 0) {
+          selector.innerHTML = '<option value="">📁 Espacio Predeterminado</option>';
+          return;
+        }
+
+        list.forEach(w => {
+          const opt = document.createElement('option');
+          opt.value = w.workspaceId;
+          opt.textContent = `📁 ${w.name} (${w.fileCount} archivos)`;
+          selector.appendChild(opt);
+        });
+
+        renderWorkspaceList(list);
+      } catch (e) {
+        console.warn('No se pudieron cargar los workspaces:', e);
+      }
+    }
+
+    function renderWorkspaceList(list) {
+      const container = document.getElementById('wsListContainer');
+      if (!container) return;
+      if (!list || list.length === 0) {
+        container.innerHTML = '<div style="color:#64748b; font-size:11px;">No hay espacios creados aún.</div>';
+        return;
+      }
+      container.innerHTML = list.map(w => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border-bottom:1px solid #1e293b;">
+          <div>
+            <b style="color:#38bdf8;">${w.name}</b>
+            <span style="font-size:11px; color:#94a3b8; margin-left:6px;">(${w.fileCount} archivos)</span>
+            ${w.description ? `<div style="font-size:11px; color:#64748b;">${w.description}</div>` : ''}
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button onclick="selectAndCloseWorkspace('${w.workspaceId}')" style="font-size:10px; padding:2px 6px;">Cargar</button>
+            <button onclick="deleteWorkspace('${w.workspaceId}')" style="font-size:10px; padding:2px 6px; border-color:#ef4444; color:#fca5a5;">🗑</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function selectAndCloseWorkspace(wsId) {
+      document.getElementById('workspaceSelector').value = wsId;
+      await switchWorkspace(wsId);
+      closeWorkspaceModal();
+    }
+
+    async function switchWorkspace(wsId) {
+      if (!wsId) return;
+      try {
+        await fetch(`/api/workspaces/active/${wsId}`, { method: 'POST' });
+        const res = await fetch(`/api/workspaces/${wsId}`);
+        const ws = await res.json();
+        document.getElementById('boardTitle').textContent = `Espacio: ${ws.name}`;
+      } catch (e) {
+        console.error('Error al cambiar de espacio:', e);
+      }
+    }
+
+    async function deleteWorkspace(wsId) {
+      if (!confirm('¿Eliminar este espacio de trabajo y sus archivos?')) return;
+      try {
+        await fetch(`/api/workspaces/${wsId}`, { method: 'DELETE' });
+        await loadWorkspaces();
+      } catch (e) {
+        alert('Error al eliminar: ' + e.message);
+      }
+    }
+
+    function openWorkspaceModal() {
+      document.getElementById('workspaceModalBackdrop').style.display = 'flex';
+      loadWorkspaces();
+    }
+
+    function closeWorkspaceModal() {
+      document.getElementById('workspaceModalBackdrop').style.display = 'none';
+      stagedWsFiles = [];
+      renderStagedFiles();
+    }
+
+    function handleWsFilesSelected(files) {
+      for (const f of files) {
+        if (!stagedWsFiles.some(existing => existing.name === f.name && existing.size === f.size)) {
+          stagedWsFiles.push(f);
+        }
+      }
+      renderStagedFiles();
+    }
+
+    function classifyFileRole(fileName) {
+      const ext = fileName.slice((fileName.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
+      const lower = fileName.toLowerCase();
+      if (['brd', 'pcb', 'cad', 'fz', 'bdv'].includes(ext)) return { role: 'PHYSICAL_CAD', cls: 'role-cad' };
+      if (ext === 'pdf') {
+        if (lower.includes('dimension') || lower.includes('manual') || lower.includes('layout'))
+          return { role: 'AUX_DOC', cls: 'role-aux' };
+        if (lower.includes('schematic') || lower.includes('esquematico') || lower.includes('diagram')) {
+          if (lower.includes('rev') || lower.includes('old') || lower.includes('apr'))
+            return { role: 'SCHEMATIC_ALT', cls: 'role-schem-alt' };
+          return { role: 'SCHEMATIC_PRIMARY', cls: 'role-schem-prim' };
+        }
+        return { role: 'SCHEMATIC_PRIMARY', cls: 'role-schem-prim' };
+      }
+      return { role: 'AUX_DOC', cls: 'role-aux' };
+    }
+
+    function renderStagedFiles() {
+      const container = document.getElementById('wsStagedFilesList');
+      if (!container) return;
+      if (stagedWsFiles.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = stagedWsFiles.map((f, i) => {
+        const info = classifyFileRole(f.name);
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; border:1px solid #1e293b; padding:4px 8px; border-radius:4px; font-size:11px;">
+            <span>📄 ${f.name} <span style="color:#64748b;">(${(f.size/1024).toFixed(0)} KB)</span></span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="file-role-badge ${info.cls}">${info.role}</span>
+              <button onclick="removeStagedFile(${i})" style="padding:1px 5px; font-size:10px; border:none; background:transparent; color:#ef4444;">✕</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function removeStagedFile(idx) {
+      stagedWsFiles.splice(idx, 1);
+      renderStagedFiles();
+    }
+
+    async function submitNewWorkspace() {
+      const name = document.getElementById('newWsName').value.trim();
+      const desc = document.getElementById('newWsDesc').value.trim();
+      if (!name) { alert('Ingresa un nombre para el espacio.'); return; }
+      if (stagedWsFiles.length === 0) { alert('Agrega al menos un archivo (.brd o .pdf).'); return; }
+
+      const btn = document.getElementById('btnSubmitWs');
+      btn.disabled = true;
+      btn.textContent = 'Subiendo...';
+
+      const formData = new FormData();
+      formData.append('name', name);
+      if (desc) formData.append('description', desc);
+      for (const f of stagedWsFiles) {
+        formData.append('files', f);
+      }
+
+      try {
+        const res = await fetch('/api/workspaces/upload', {
+          method: 'POST',
+          body: formData
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const created = await res.json();
+        alert(`¡Espacio '${created.name}' creado con éxito con ${created.files.length} archivos!`);
+        document.getElementById('newWsName').value = '';
+        document.getElementById('newWsDesc').value = '';
+        stagedWsFiles = [];
+        closeWorkspaceModal();
+        await loadWorkspaces();
+        document.getElementById('workspaceSelector').value = created.workspaceId;
+      } catch (e) {
+        alert('Error al crear espacio: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Crear y Subir Archivos';
+      }
+    }
+
+    // Modal de Reparación Resuelta
+    function openRecordRepairModal(comp = null, net = null) {
+      document.getElementById('repairModalBackdrop').style.display = 'flex';
+      const board = boardData ? (boardData.fileName || '820-3115-B') : '820-3115-B';
+      document.getElementById('repBoardId').value = board.replace(/\.brd$/i, '');
+      const presetSelect = document.getElementById('mazePresetSelect');
+      const symptom = (presetSelect && presetSelect.value) ? presetSelect.value.toUpperCase().replace(/\s+/g, '_') : 'PPBUS_G3H_MISSING';
+      document.getElementById('repSymptomKey').value = symptom;
+      document.getElementById('repFaultyComp').value = comp || highlightedCompId || 'C7513';
+    }
+
+    function closeRecordRepairModal() {
+      document.getElementById('repairModalBackdrop').style.display = 'none';
+    }
+
+    async function submitRecordRepair() {
+      const boardId = document.getElementById('repBoardId').value.trim();
+      const symptomKey = document.getElementById('repSymptomKey').value.trim();
+      const faultyComp = document.getElementById('repFaultyComp').value.trim();
+      const faultType = document.getElementById('repFaultType').value;
+      const impedance = parseFloat(document.getElementById('repImpedance').value) || null;
+      const voltage = parseFloat(document.getElementById('repVoltage').value) || null;
+      const notes = document.getElementById('repNotes').value.trim();
+
+      if (!boardId || !symptomKey || !faultyComp) {
+        alert('Placa, síntoma y componente son campos requeridos.');
+        return;
+      }
+
+      const wsSelector = document.getElementById('workspaceSelector');
+      const wsId = (wsSelector && wsSelector.value) ? wsSelector.value : 'default_ws';
+
+      const payload = {
+        workspaceId: wsId,
+        boardId: boardId,
+        symptomKey: symptomKey,
+        faultyComponent: faultyComp,
+        faultType: faultType,
+        measuredImpedance: impedance,
+        measuredVoltage: voltage,
+        notes: notes
+      };
+
+      try {
+        const res = await fetch('/api/repairs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        alert(`¡Reparación registrada con éxito! La falla en ${faultyComp} alimentará el reordenamiento predictivo del Stepper.`);
+        closeRecordRepairModal();
+      } catch (e) {
+        alert('Error al registrar reparación: ' + e.message);
+      }
+    }
+
+    // Configuración de Drag & Drop
+    const dropZone = document.getElementById('wsDropZone');
+    if (dropZone) {
+      ['dragenter', 'dragover'].forEach(name => {
+        dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      });
+      ['dragleave', 'drop'].forEach(name => {
+        dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); });
+      });
+      dropZone.addEventListener('drop', e => {
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length) {
+          handleWsFilesSelected(dt.files);
+        }
+      });
+    }
+
     loadBoardGeometry();
     connectWebSocket();
+    loadWorkspaces();
   </script>
+
+  <!-- Modal 1: Espacios de Trabajo & Drag & Drop Multi-Archivo (v4) -->
+  <div class="modal-backdrop" id="workspaceModalBackdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span>📁 Gestión de Espacios de Trabajo (Local-First v4)</span>
+        <button onclick="closeWorkspaceModal()" style="border:none; background:transparent; color:#94a3b8; font-size:16px;">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4 style="margin-bottom:8px; color:#f8fafc;">Espacios Existentes</h4>
+        <div id="wsListContainer" style="margin-bottom:16px; max-height:160px; overflow-y:auto; border:1px solid #1e293b; border-radius:6px; padding:8px; background:#090d16;">
+          <div style="color:#64748b;">Cargando espacios...</div>
+        </div>
+
+        <h4 style="margin-bottom:8px; color:#f8fafc;">+ Crear Nuevo Espacio con Múltiples Archivos</h4>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <input type="text" id="newWsName" placeholder="Nombre (ej. MacBook Pro A1278 820-3115-B)" style="background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+          <input type="text" id="newWsDesc" placeholder="Descripción / Notas del cliente o falla (opcional)" style="background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+          
+          <div class="drop-zone" id="wsDropZone" onclick="document.getElementById('wsFileInput').click()">
+            <div style="font-size:22px; margin-bottom:4px;">📥</div>
+            <div><b>Arrastra y suelta tus archivos aquí</b> o haz clic para examinar</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Formatos soportados: .brd, .pcb, .cad, .fz, .bdv, .pdf (Esquemáticos y manuales)</div>
+            <input type="file" id="wsFileInput" multiple style="display:none;" onchange="handleWsFilesSelected(this.files)" />
+          </div>
+
+          <div id="wsStagedFilesList" style="margin-top:8px; display:flex; flex-direction:column; gap:4px; max-height:120px; overflow-y:auto;"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="closeWorkspaceModal()">Cancelar</button>
+        <button onclick="submitNewWorkspace()" id="btnSubmitWs" style="background:#0284c7; border-color:#38bdf8; color:#fff; font-weight:700;">Crear y Subir Archivos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Registrar Reparación Resuelta (Memoria Estadística) -->
+  <div class="modal-backdrop" id="repairModalBackdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span style="color:#22c55e;">💾 Guardar Reparación Resuelta en Memoria Estadística</span>
+        <button onclick="closeRecordRepairModal()" style="border:none; background:transparent; color:#94a3b8; font-size:16px;">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:#94a3b8; margin-bottom:12px; font-size:12px;">
+          Esta información alimentará el reordenamiento predictivo del Stepper para que el próximo técnico resuelva esta falla más rápido.
+        </p>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div>
+            <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Placa / Modelo:</label>
+            <input type="text" id="repBoardId" style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+          </div>
+          <div>
+            <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Clave del Síntoma:</label>
+            <input type="text" id="repSymptomKey" placeholder="ej. NO_POWER_200MA o PPBUS_G3H_MISSING" style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div>
+              <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Componente Defectuoso:</label>
+              <input type="text" id="repFaultyComp" placeholder="ej. C7513" style="width:100%; background:#090d16; border:1px solid #334155; color:#f87171; font-weight:700; padding:6px 10px; border-radius:6px; font-size:12px;" />
+            </div>
+            <div>
+              <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Tipo de Falla:</label>
+              <select id="repFaultType" style="width:100%; background:#090d16; border:1px solid #334155; color:#38bdf8; padding:6px 10px; border-radius:6px; font-size:12px;">
+                <option value="SHORT_TO_GND">Cortocircuito a GND</option>
+                <option value="OPEN_CIRCUIT">Circuito Abierto (Fusible/R)</option>
+                <option value="NO_ENABLE">Falta Habilitación (EN/PGOOD)</option>
+                <option value="IC_FAILURE">Falla Interna de CI</option>
+                <option value="PCH_DAMAGE">Daño en PCH/CPU</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div>
+              <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Impedancia Medida (Ω):</label>
+              <input type="number" step="0.1" id="repImpedance" placeholder="ej. 0.4" style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+            </div>
+            <div>
+              <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Voltaje Medido (V):</label>
+              <input type="number" step="0.1" id="repVoltage" placeholder="ej. 0.0" style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Notas Técnicas / Solución:</label>
+            <textarea id="repNotes" rows="2" placeholder="ej. Se reemplazó C7513 por uno de 10uF 25V y se restableció PPBUS_G3H a 12.6V." style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="closeRecordRepairModal()">Cancelar</button>
+        <button onclick="submitRecordRepair()" style="background:#15803d; border-color:#22c55e; color:#fff; font-weight:700;">Guardar Reparación</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

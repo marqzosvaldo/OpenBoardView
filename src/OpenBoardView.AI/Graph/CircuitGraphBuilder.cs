@@ -55,6 +55,11 @@ public class CircuitGraphBuilder
         _topology = topology ?? throw new ArgumentNullException(nameof(topology));
         _schematicIndex = schematicIndex;
 
+        if (_schematicIndex != null)
+        {
+            OpenBoardView.AI.Parsers.SchematicPdfReader.EnrichTopologyWithIndex(_topology, _schematicIndex);
+        }
+
         _componentsById = _topology.Components
             .GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);

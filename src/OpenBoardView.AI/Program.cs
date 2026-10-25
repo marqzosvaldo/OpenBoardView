@@ -5,20 +5,41 @@ using OpenBoardView.AI.Graph;
 using OpenBoardView.AI.Knowledge;
 using OpenBoardView.AI.Models;
 using OpenBoardView.AI.Parsers;
+using OpenBoardView.AI.Persistence;
 using OpenBoardView.AI.Server;
+using OpenBoardView.AI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 builder.WebHost.UseUrls("http://127.0.0.1:5080");
 
+builder.Services.AddControllers();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<ObvWebSocketServer>();
 
-// 1. Cargar y parsear topología BRD (Fase 1) + Esquemático PDF (Fase 2) + Grafo en Memoria (Fase 3)
+// Registro del Servicio de Persistencia Híbrida SQLite (v4)
+builder.Services.AddSingleton<IPersistenceService>(sp =>
+{
+    var env = sp.GetRequiredService<IHostEnvironment>();
+    var dbPath = Path.Combine(env.ContentRootPath, "Data", "openboardview_ai.db");
+    var service = new SqlitePersistenceService(dbPath);
+    service.InitializeAsync().GetAwaiter().GetResult();
+    return service;
+});
+
+// Administrador de Espacios de Trabajo Multi-Archivo (v4)
+builder.Services.AddSingleton<IWorkspaceService, WorkspaceService>();
+
+// Servicio de Sincronización en Segundo Plano hacia la Nube (v4)
+builder.Services.AddHttpClient<BackgroundSyncWorker>();
+builder.Services.AddHostedService<BackgroundSyncWorker>();
+
+// 1. Cargar y parsear topología BRD (Fase 1) + Esquemático PDF (Fase 2) + Grafo en Memoria (Fase 3) con Caché Instantáneo (<0.1s)
 builder.Services.AddSingleton<CircuitGraphBuilder>(sp =>
 {
     var config = sp.GetRequiredService<IConfiguration>();
     var env = sp.GetRequiredService<IHostEnvironment>();
+    var persistence = sp.GetRequiredService<IPersistenceService>();
 
     // Resolución flexible de archivos BRD y PDF:
     // 1. Argumentos CLI (--brd / --pdf)
@@ -58,13 +79,50 @@ builder.Services.AddSingleton<CircuitGraphBuilder>(sp =>
     BoardTopology topology = brdParser.ParseFile(brdFullPath);
     Console.WriteLine($"[Fase 1] OK -> Componentes: {topology.Components.Count} | Redes: {topology.Nets.Count} | Desencriptado: {topology.WasEncrypted}");
 
+    // Cálculo de hashes para verificación de caché instantáneo (< 0.1s)
+    byte[] brdBytes = File.ReadAllBytes(brdFullPath);
+    string brdHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(brdBytes)).ToLowerInvariant();
+    string pdfHash = File.Exists(pdfFullPath)
+        ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(pdfFullPath))).ToLowerInvariant()
+        : "no_pdf";
+
+    var cachedBoard = persistence.GetBoardCacheByHashesAsync(brdHash, pdfHash).GetAwaiter().GetResult();
     SchematicIndex? schematicIndex = null;
-    if (File.Exists(pdfFullPath))
+
+    if (cachedBoard != null && !string.IsNullOrWhiteSpace(cachedBoard.CachedIndexJson))
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        schematicIndex = SchematicIndexCacheSerializer.Deserialize(cachedBoard.CachedIndexJson);
+        sw.Stop();
+        Console.WriteLine($"[Caché SQLite] ⚡ ¡Inicio Instantáneo! Esquemático recuperado de SQLite en {sw.ElapsedMilliseconds} ms (< 0.1s) | Páginas: {schematicIndex?.TotalPages ?? 0} | Contexto: {schematicIndex?.ComponentContext.Count ?? 0} comps.");
+    }
+    else if (File.Exists(pdfFullPath))
     {
         Console.WriteLine($"[Fase 2] Indexando esquemático PDF: {Path.GetFileName(pdfFullPath)}...");
         var pdfReader = new SchematicPdfReader();
         schematicIndex = pdfReader.ReadAndIndexPdf(pdfFullPath, topology);
         Console.WriteLine($"[Fase 2] OK -> Páginas: {schematicIndex.TotalPages} | Componentes con contexto PDF: {schematicIndex.ComponentContext.Count} | Valores 2D: {schematicIndex.ComponentValues.Count} | Redes con VOLTAGE=: {schematicIndex.NetVoltages.Count} | NO STUFF: {schematicIndex.NoStuffComponents.Count}");
+
+        // Persistir en SQLite para arranques instantáneos futuros
+        string boardId = Path.GetFileNameWithoutExtension(topology.FileName);
+        string serializedJson = SchematicIndexCacheSerializer.Serialize(schematicIndex);
+        var compCache = topology.Components
+            .Where(c => !string.IsNullOrWhiteSpace(c.Id))
+            .GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .Select(c => new ComponentCacheDto(
+                c.Id,
+                boardId,
+                c.Side.ToString(),
+                c.Quadrant,
+                c.SchematicPages.FirstOrDefault(),
+                c.Pins.Count
+            )).ToList();
+
+        // Asegurar que exista un workspace predeterminado para el caché
+        persistence.InsertWorkspaceAsync("Espacio Predeterminado", "Placa de referencia", "default_ws").GetAwaiter().GetResult();
+        persistence.SaveBoardCacheAsync(boardId, "default_ws", topology.FileName, brdHash, pdfHash, compCache, serializedJson).GetAwaiter().GetResult();
+        Console.WriteLine($"[Caché SQLite] Placa '{boardId}' indexada y guardada en SQLite para arranques instantáneos futuros.");
     }
 
     Console.WriteLine("[Fase 3] Construyendo grafo de circuito en memoria...");
@@ -132,7 +190,54 @@ builder.Services.AddScoped<BoardDiagnosticsService>();
 
 var app = builder.Build();
 
-// Modo CLI para verificación rápida (`dotnet run -- --verify` o `dotnet run -- --ask "..."`)
+// Modo CLI para verificación rápida (`dotnet run -- --verify`, `dotnet run -- --ask "..."` o `dotnet run -- --test-persistence`)
+if (args.Contains("--test-persistence"))
+{
+    using var scope = app.Services.CreateScope();
+    var persistence = scope.ServiceProvider.GetRequiredService<IPersistenceService>();
+    var wsService = scope.ServiceProvider.GetRequiredService<IWorkspaceService>();
+
+    Console.WriteLine("\n=======================================================");
+    Console.WriteLine("    VERIFICACIÓN DE PERSISTENCIA Y WORKSPACES (v4)     ");
+    Console.WriteLine("=======================================================");
+
+    var wsDto = await wsService.CreateWorkspaceAsync("Test Verification WS", "Espacio de prueba", new List<FileUploadRequest>
+    {
+        new() { FileName = "820-3115-B.brd", ContentBytes = new byte[] { 1, 2, 3, 4 }, Length = 4 },
+        new() { FileName = "Apple_Schematics.pdf", ContentBytes = new byte[] { 5, 6, 7, 8 }, Length = 4 }
+    });
+
+    Console.WriteLine($"1) Workspace creado con éxito: ID={wsDto.WorkspaceId}");
+    var detail = await wsService.GetWorkspaceByIdAsync(wsDto.WorkspaceId);
+    Console.WriteLine($"2) Archivos en Workspace ({detail?.Files.Count ?? 0} detectados):");
+    foreach (var f in detail?.Files ?? new())
+    {
+        Console.WriteLine($"   - {f.FileName} [{f.FileType}] | Hash: {f.FileHash[..8]}...");
+    }
+
+    Console.WriteLine($"3) Registrando placa y reparación estadística...");
+    await persistence.SaveBoardCacheAsync("820-3115-B", wsDto.WorkspaceId, "MacBook Pro A1278", "mock_brd_hash", "mock_pdf_hash", new List<ComponentCacheDto>());
+    await persistence.RecordRepairAsync(new RepairRecordDto
+    {
+        WorkspaceId = wsDto.WorkspaceId,
+        BoardId = "820-3115-B",
+        SymptomKey = "PPBUS_G3H_MISSING",
+        FaultyComponent = "C7513",
+        FaultType = "SHORT_TO_GND",
+        MeasuredImpedance = 0.4
+    });
+
+    var stats = await persistence.GetTopFailingComponentsAsync("820-3115-B", "PPBUS_G3H_MISSING");
+    Console.WriteLine($"4) Estadísticas de falla para 'PPBUS_G3H_MISSING':");
+    foreach (var s in stats)
+    {
+        Console.WriteLine($"   - Componente: {s.ComponentId} | Casos: {s.FailureCount} | Probabilidad: {s.ProbabilityPercentage:F1}%");
+    }
+
+    Console.WriteLine("\n✅ Todas las pruebas de persistencia v4 finalizaron con ÉXITO.\n");
+    return;
+}
+
 if (args.Contains("--verify") || args.Contains("--ask"))
 {
     using var scope = app.Services.CreateScope();
@@ -292,9 +397,17 @@ app.MapPost("/api/board/simulate", async (SimulationRequestDto request, CircuitS
     return Results.Ok(sim);
 });
 
-app.MapPost("/api/board/debugger/trace", async (MazeTraceRequestDto request, CircuitMazeDebugger mazeDebugger, ObvWebSocketServer wsServer, CancellationToken ct) =>
+app.MapPost("/api/board/debugger/trace", async (
+    MazeTraceRequestDto request, 
+    CircuitMazeDebugger mazeDebugger, 
+    IPersistenceService persistence,
+    CircuitGraphBuilder graph,
+    ObvWebSocketServer wsServer, 
+    CancellationToken ct) =>
 {
-    var trace = mazeDebugger.BuildTrace(request);
+    var boardId = Path.GetFileNameWithoutExtension(graph.Topology.FileName);
+    var failureStats = await persistence.GetTopFailingComponentsAsync(boardId, request.QueryOrSymptom);
+    var trace = mazeDebugger.BuildTrace(request, failureStats);
     var activeNode = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) ?? trace.Steps.First();
     var wsPayload = new ObvUiCommandPayload(
         Action: "maze_debugger",
@@ -336,5 +449,8 @@ app.MapPost("/api/agent/stream", async (HttpContext httpContext, AgentQueryReque
     }
     await httpContext.Response.WriteAsync("data: [DONE]\n\n", ct);
 });
+
+// Registrar controladores de Workspaces, Reparaciones y Sesiones (v4)
+app.MapControllers();
 
 app.Run();

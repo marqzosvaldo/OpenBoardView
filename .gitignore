@@ -78,3 +78,10 @@ appsettings.Local.json
 .env
 Library/
 
+# OpenBoardView AI SQLite & Workspaces
+Data/
+**/Data/
+*.db
+*.db-shm
+*.db-wal
+

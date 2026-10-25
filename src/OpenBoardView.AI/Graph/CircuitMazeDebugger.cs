@@ -24,7 +24,9 @@ public record MazeStepDto(
     bool ComponentFound = true,              // false si el componente no existe en el .brd cargado
     string MeasurementMode = MeasurementModes.Voltage,
     string? ExpectedReading = null,
-    string? Branch = null);
+    string? Branch = null,
+    double? FailureProbability = null,
+    int? HistoricalFailureCount = null);
 
 public record MazeTraceResultDto(
     string TraceId,
@@ -35,7 +37,8 @@ public record MazeTraceResultDto(
     string OverallDiagnosis,
     List<MazeStepDto> Steps,
     List<string>? Warnings = null,
-    string TargetNet = "PPBUS_G3H");
+    string TargetNet = "PPBUS_G3H",
+    List<ComponentFailureStat>? HistoricalFailureStats = null);
 
 public class MazeTraceRequestDto
 {
@@ -103,7 +106,7 @@ public class CircuitMazeDebugger
 
     public FlowKnowledgeBase Knowledge => _knowledge;
 
-    public MazeTraceResultDto BuildTrace(MazeTraceRequestDto request)
+    public MazeTraceResultDto BuildTrace(MazeTraceRequestDto request, List<ComponentFailureStat>? failureStats = null)
     {
         string rawQuery = request.QueryOrSymptom ?? "no carga";
         string q = rawQuery.Trim().ToLowerInvariant();
@@ -192,6 +195,15 @@ public class CircuitMazeDebugger
                 else status = "PENDING";
             }
 
+            var stat = failureStats?.FirstOrDefault(s => string.Equals(s.ComponentId, comp?.ComponentId ?? item.CompId, StringComparison.OrdinalIgnoreCase));
+            double? failProb = stat?.ProbabilityPercentage;
+            int? failCount = stat?.FailureCount;
+            string howItWorks = item.HowItWorks;
+            if (stat != null && stat.ProbabilityPercentage > 0)
+            {
+                howItWorks = $"⚡ [Estadística Histórica: {stat.ProbabilityPercentage:F0}% prob. de falla ({stat.FailureCount} casos)] {howItWorks}";
+            }
+
             steps.Add(new MazeStepDto(
                 StepNumber: stepIdx,
                 StageTitle: item.StageTitle,
@@ -205,14 +217,16 @@ public class CircuitMazeDebugger
                 OutputNet: item.OutputNet,
                 ExpectedVoltage: item.ExpectedV,
                 PinToMeasure: item.PinHint,
-                HowItWorks: item.HowItWorks,
+                HowItWorks: howItWorks,
                 FailDiagnosis: item.FailDiag,
                 Status: status,
                 DataSource: item.DataSource,
                 ComponentFound: found,
                 MeasurementMode: item.MeasurementMode,
                 ExpectedReading: item.ExpectedReading,
-                Branch: item.Branch
+                Branch: item.Branch,
+                FailureProbability: failProb,
+                HistoricalFailureCount: failCount
             ));
 
             stepIdx++;
@@ -229,7 +243,8 @@ public class CircuitMazeDebugger
                 OverallDiagnosis: $"No se pudo construir una ruta para '{rawQuery}': no hay un flujo curado ni se encontraron redes o componentes coincidentes en la placa cargada.",
                 Steps: steps,
                 Warnings: warnings,
-                TargetNet: resolvedTargetNet);
+                TargetNet: resolvedTargetNet,
+                HistoricalFailureStats: failureStats);
         }
 
         activeStep = Math.Clamp(activeStep, 1, Math.Max(1, steps.Count));
@@ -253,7 +268,8 @@ public class CircuitMazeDebugger
             OverallDiagnosis: overallDiag,
             Steps: steps,
             Warnings: warnings.Count > 0 ? warnings : null,
-            TargetNet: resolvedTargetNet
+            TargetNet: resolvedTargetNet,
+            HistoricalFailureStats: failureStats
         );
     }
 

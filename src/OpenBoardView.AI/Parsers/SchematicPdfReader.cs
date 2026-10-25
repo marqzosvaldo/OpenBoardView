@@ -219,52 +219,59 @@ public class SchematicPdfReader
         // Enriquecer directamente el BoardTopology si se proporcionó
         if (topology != null)
         {
-            foreach (var comp in topology.Components)
-            {
-                if (index.ComponentContext.TryGetValue(comp.Id, out var entries))
-                {
-                    comp.SchematicPages = entries.Select(e => e.PageNumber).Distinct().OrderBy(p => p).ToList();
-                    comp.SchematicContext = string.Join(" // ", entries.Take(4).Select(e => $"[Pág {e.PageNumber}] {e.Snippet}"));
-                }
-
-                if (index.ComponentValues.TryGetValue(comp.Id, out var val))
-                {
-                    comp.SchematicValue = val;
-                }
-
-                if (index.NoStuffComponents.Contains(comp.Id))
-                {
-                    comp.IsNoStuff = true;
-                }
-            }
-
-            foreach (var net in topology.Nets)
-            {
-                if (index.NetContext.TryGetValue(net.Name, out var entries))
-                {
-                    net.SchematicPages = entries.Select(e => e.PageNumber).Distinct().OrderBy(p => p).ToList();
-                    net.SchematicContext = string.Join(" // ", entries.Take(4).Select(e => $"[Pág {e.PageNumber}] {e.Snippet}"));
-                }
-
-                if (index.NetAliases.TryGetValue(net.Name, out var baseRail))
-                {
-                    net.BaseRailName = baseRail;
-                }
-
-                if (index.SwitchNodeNets.Contains(net.Name))
-                {
-                    net.IsSwitchNode = true;
-                }
-
-                if (index.NetVoltages.TryGetValue(net.Name, out var vInfo))
-                {
-                    net.SchematicVoltage = vInfo.Voltage;
-                    net.SchematicVoltagePage = vInfo.PageNumber;
-                }
-            }
+            EnrichTopologyWithIndex(topology, index);
         }
 
         return index;
+    }
+
+    public static void EnrichTopologyWithIndex(BoardTopology topology, SchematicIndex index)
+    {
+        if (topology == null || index == null) return;
+
+        foreach (var comp in topology.Components)
+        {
+            if (index.ComponentContext.TryGetValue(comp.Id, out var entries))
+            {
+                comp.SchematicPages = entries.Select(e => e.PageNumber).Distinct().OrderBy(p => p).ToList();
+                comp.SchematicContext = string.Join(" // ", entries.Take(4).Select(e => $"[Pág {e.PageNumber}] {e.Snippet}"));
+            }
+
+            if (index.ComponentValues.TryGetValue(comp.Id, out var val))
+            {
+                comp.SchematicValue = val;
+            }
+
+            if (index.NoStuffComponents.Contains(comp.Id))
+            {
+                comp.IsNoStuff = true;
+            }
+        }
+
+        foreach (var net in topology.Nets)
+        {
+            if (index.NetContext.TryGetValue(net.Name, out var entries))
+            {
+                net.SchematicPages = entries.Select(e => e.PageNumber).Distinct().OrderBy(p => p).ToList();
+                net.SchematicContext = string.Join(" // ", entries.Take(4).Select(e => $"[Pág {e.PageNumber}] {e.Snippet}"));
+            }
+
+            if (index.NetAliases.TryGetValue(net.Name, out var baseRail))
+            {
+                net.BaseRailName = baseRail;
+            }
+
+            if (index.SwitchNodeNets.Contains(net.Name))
+            {
+                net.IsSwitchNode = true;
+            }
+
+            if (index.NetVoltages.TryGetValue(net.Name, out var vInfo))
+            {
+                net.SchematicVoltage = vInfo.Voltage;
+                net.SchematicVoltagePage = vInfo.PageNumber;
+            }
+        }
     }
 
     private static void ExtractPageNetAttributes2D(
