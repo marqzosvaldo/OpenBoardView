@@ -264,6 +264,162 @@
       letter-spacing: 0.5px;
       margin-bottom: 6px;
     }
+    .chat-header-bar {
+      padding: 7px 14px;
+      background: rgba(17, 24, 39, 0.95);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .chat-header-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .ai-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px 3px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+    .ai-chip.online {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.35);
+      color: #86efac;
+    }
+    .ai-chip.online:hover {
+      background: rgba(34, 197, 94, 0.22);
+      border-color: rgba(34, 197, 94, 0.5);
+    }
+    .ai-chip.offline {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+    .ai-chip.offline:hover {
+      background: rgba(239, 68, 68, 0.22);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+    .ai-chip.probing {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #fde047;
+    }
+    .ai-chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .ai-chip.online .ai-chip-dot {
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e;
+    }
+    .ai-chip.offline .ai-chip-dot {
+      background: #ef4444;
+      box-shadow: 0 0 6px #ef4444;
+    }
+    .ai-chip.probing .ai-chip-dot {
+      background: #f59e0b;
+      box-shadow: 0 0 6px #f59e0b;
+      animation: pulse-dot 1s infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(0.75); }
+    }
+    .ai-chip-model {
+      font-weight: 600;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ai-chip-badge {
+      font-size: 10px;
+      opacity: 0.85;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .ai-chip-retry {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      padding: 2px;
+      border-radius: 4px;
+      opacity: 0.75;
+      transition: all 0.15s ease;
+    }
+    .ai-chip-retry:hover {
+      opacity: 1;
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .ai-chip-retry.spinning svg {
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+    .api-key-popover {
+      padding: 8px 12px;
+      background: rgba(30, 41, 59, 0.95);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .api-key-popover input {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      outline: none;
+    }
+    .api-key-popover input:focus {
+      border-color: var(--accent);
+    }
+    .api-key-popover button.btn-save {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .api-key-popover button.btn-save:hover {
+      background: #1d4ed8;
+    }
+    .api-key-popover button.btn-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 4px;
+    }
     .chat-history {
       flex: 1;
       overflow-y: auto;
@@ -589,6 +745,33 @@
         <div id="inspectorBody" style="color: var(--text-muted);">
           Haz clic en cualquier componente para ver sus pines, levantar/soldar puentes o simular un corto directo a tierra en él.
         </div>
+      </div>
+
+      <!-- Barra de Estado de IA en el Chat con Chip y Reintentos -->
+      <div class="chat-header-bar">
+        <div class="chat-header-left">
+          <span>💬</span>
+          <span>Asistente IA</span>
+        </div>
+        <div class="chat-header-right">
+          <div id="aiChatStatusChip" class="ai-chip offline" onclick="onAiChipClicked()" title="Estado de la IA. Clic para reintentar o conectar">
+            <span class="ai-chip-dot"></span>
+            <span id="aiChipModel" class="ai-chip-model">Detectando...</span>
+            <span id="aiChipStatus" class="ai-chip-badge">Offline</span>
+            <button id="btnAiRetry" class="ai-chip-retry" onclick="event.stopPropagation(); retryAiConnection();" title="Reintentar conexión con las IAs disponibles">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de Configuración Rápida de API Key (si está Offline) -->
+      <div id="apiKeyPopover" class="api-key-popover" style="display: none;">
+        <input type="password" id="inputApiKey" placeholder="Pega tu Gemini API Key (AIzaSy...)" onkeydown="if(event.key==='Enter') saveApiKey()" />
+        <button class="btn-save" onclick="saveApiKey()">Conectar</button>
+        <button class="btn-close" onclick="toggleApiKeyPopover(false)" title="Cerrar">✕</button>
       </div>
 
       <div class="chat-history" id="chatHistory">
@@ -2071,34 +2254,173 @@
       });
     }
 
-    async function loadAiCapabilities() {
+    let currentAiStatus = null;
+
+    async function checkAiConnection(forceRetry = false) {
+      const chip = document.getElementById('aiChatStatusChip');
+      const modelEl = document.getElementById('aiChipModel');
+      const statusEl = document.getElementById('aiChipStatus');
+      const retryBtn = document.getElementById('btnAiRetry');
+
+      if (chip) {
+        chip.classList.remove('online', 'offline');
+        chip.classList.add('probing');
+        if (statusEl) statusEl.textContent = 'Probando...';
+        if (retryBtn) retryBtn.classList.add('spinning');
+      }
+
       try {
-        const res = await fetch('/api/agent/capabilities');
+        const url = forceRetry ? '/api/agent/capabilities/retry' : '/api/agent/capabilities';
+        const method = forceRetry ? 'POST' : 'GET';
+        const res = await fetch(url, { method });
         if (res.ok) {
           const cap = await res.json();
-          const badge = document.getElementById('aiEngineBadge');
-          if (badge) {
-            badge.textContent = cap.displayTitle || 'IA Activa';
-            badge.title = cap.description || '';
-            if (cap.activeTier === 'Tier1_OllamaLocal') {
-              badge.style.background = 'rgba(34, 197, 94, 0.15)';
-              badge.style.color = '#4ade80';
-              badge.style.borderColor = 'rgba(34, 197, 94, 0.4)';
-            } else if (cap.activeTier === 'Tier2_GeminiCloud') {
-              badge.style.background = 'rgba(59, 130, 246, 0.15)';
-              badge.style.color = '#60a5fa';
-              badge.style.borderColor = 'rgba(59, 130, 246, 0.4)';
-            } else {
-              badge.style.background = 'rgba(234, 179, 8, 0.15)';
-              badge.style.color = '#facc15';
-              badge.style.borderColor = 'rgba(234, 179, 8, 0.4)';
-            }
-          }
+          currentAiStatus = cap;
+          renderAiStatus(cap);
+        } else {
+          renderAiOffline('Error al consultar estado de IA');
         }
       } catch (e) {
-        console.warn('No se pudo verificar capacidades de IA', e);
+        renderAiOffline('Sin conexión con el servidor local');
+      } finally {
+        if (retryBtn) retryBtn.classList.remove('spinning');
+        if (chip) chip.classList.remove('probing');
       }
     }
+
+    function renderAiStatus(cap) {
+      const chip = document.getElementById('aiChatStatusChip');
+      const modelEl = document.getElementById('aiChipModel');
+      const statusEl = document.getElementById('aiChipStatus');
+      const topBadge = document.getElementById('aiEngineBadge');
+
+      const isOnline = cap.isOnline === true;
+      const modelName = cap.model || 'gemini-2.5-flash';
+
+      if (modelEl) modelEl.textContent = modelName;
+
+      if (chip) {
+        chip.classList.remove('online', 'offline', 'probing');
+        if (isOnline) {
+          chip.classList.add('online');
+          if (statusEl) statusEl.textContent = 'Online';
+          chip.title = `Conectado a ${modelName} (${cap.provider}). Clic para verificar o cambiar.`;
+        } else {
+          chip.classList.add('offline');
+          if (statusEl) statusEl.textContent = 'Offline';
+          chip.title = `${cap.errorMessage || 'Sin conexión o API Key inválida'}. Clic para reintentar o configurar.`;
+        }
+      }
+
+      if (topBadge) {
+        if (isOnline) {
+          topBadge.textContent = `🟢 ${modelName}`;
+          topBadge.style.color = '#4ade80';
+          topBadge.style.background = 'rgba(34, 197, 94, 0.15)';
+          topBadge.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+          topBadge.title = cap.description || '';
+        } else {
+          topBadge.textContent = `🔴 ${modelName} (Offline)`;
+          topBadge.style.color = '#f87171';
+          topBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+          topBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+          topBadge.title = `${cap.errorMessage || 'Offline'} - Modo Autónomo Local determinista activo.`;
+        }
+      }
+    }
+
+    function renderAiOffline(reason) {
+      const chip = document.getElementById('aiChatStatusChip');
+      const statusEl = document.getElementById('aiChipStatus');
+      const topBadge = document.getElementById('aiEngineBadge');
+
+      if (chip) {
+        chip.classList.remove('online', 'probing');
+        chip.classList.add('offline');
+        if (statusEl) statusEl.textContent = 'Offline';
+        chip.title = `${reason}. Clic para reintentar.`;
+      }
+      if (topBadge) {
+        topBadge.textContent = '🔴 IA Offline';
+        topBadge.style.color = '#f87171';
+        topBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+        topBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+      }
+    }
+
+    async function retryAiConnection() {
+      await checkAiConnection(true);
+    }
+
+    function onAiChipClicked() {
+      if (!currentAiStatus || !currentAiStatus.isOnline) {
+        toggleApiKeyPopover();
+      } else {
+        retryAiConnection();
+      }
+    }
+
+    function toggleApiKeyPopover(forceState) {
+      const popover = document.getElementById('apiKeyPopover');
+      if (!popover) return;
+      const isHidden = popover.style.display === 'none' || !popover.style.display;
+      const show = (forceState !== undefined) ? forceState : isHidden;
+      popover.style.display = show ? 'flex' : 'none';
+      if (show) {
+        const inp = document.getElementById('inputApiKey');
+        if (inp) {
+          inp.focus();
+          inp.select();
+        }
+      }
+    }
+
+    async function saveApiKey() {
+      const inp = document.getElementById('inputApiKey');
+      const key = inp ? inp.value.trim() : '';
+      if (!key) {
+        alert('Por favor ingresa una API Key válida de Google Gemini.');
+        return;
+      }
+
+      const saveBtn = document.querySelector('.api-key-popover button.btn-save');
+      if (saveBtn) saveBtn.textContent = 'Probando...';
+
+      try {
+        const res = await fetch('/api/agent/capabilities/apikey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: key })
+        });
+
+        if (res.ok) {
+          const cap = await res.json();
+          currentAiStatus = cap;
+          renderAiStatus(cap);
+
+          if (cap.isOnline) {
+            toggleApiKeyPopover(false);
+            if (inp) inp.value = '';
+            const chatHistory = document.getElementById('chatHistory');
+            if (chatHistory) {
+              chatHistory.innerHTML += `<div class="msg assistant">✅ <b>Conexión Exitosa:</b> Se validó la API Key con Google Gemini y el modelo <b>${cap.model}</b> está activo y listo para responder preguntas técnicas.</div>`;
+              chatHistory.scrollTop = chatHistory.scrollHeight;
+            }
+          } else {
+            alert(`No se pudo conectar con la API de Google: ${cap.errorMessage || 'Error desconocido'}`);
+          }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          alert(`Error: ${errData.error || res.statusText}`);
+        }
+      } catch (e) {
+        alert('Error al comunicarse con el servidor: ' + e.message);
+      } finally {
+        if (saveBtn) saveBtn.textContent = 'Conectar';
+      }
+    }
+
+    const loadAiCapabilities = checkAiConnection;
 
     async function initApp() {
       loadAiCapabilities();

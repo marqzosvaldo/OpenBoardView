@@ -65,7 +65,7 @@ builder.Services.AddScoped<IChatClient>(sp =>
     var status = probe.ProbeCapabilitiesAsync().GetAwaiter().GetResult();
 
     IChatClient baseClient;
-    if (status.ActiveTier == "Tier1_OllamaLocal")
+    if (status.ActiveTier == "Tier1_OllamaLocal" && status.IsOnline)
     {
         var httpClient = httpClientFactory.CreateClient("OllamaChatClient");
         var endpoint = config["AiProvider:OllamaOrOpenAI:Endpoint"] ?? "http://localhost:11434/api/chat";
@@ -75,12 +75,10 @@ builder.Services.AddScoped<IChatClient>(sp =>
     else
     {
         var httpClient = httpClientFactory.CreateClient("GeminiChatClient");
-        var apiKey = config["AiProvider:Gemini:ApiKey"];
-        if (string.IsNullOrWhiteSpace(apiKey) || apiKey.StartsWith("TU_API_KEY") || apiKey.StartsWith("YOUR_"))
-        {
-            apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? apiKey ?? string.Empty;
-        }
-        var model = config["AiProvider:Gemini:Model"] ?? "gemini-3.1-flash-lite";
+        var apiKey = probe.GetEffectiveGeminiApiKey();
+        var model = !string.IsNullOrWhiteSpace(status.Model) && status.Model.StartsWith("gemini")
+            ? status.Model 
+            : "gemini-2.5-flash";
         baseClient = new GeminiChatClient(httpClient, apiKey, model);
     }
 
@@ -361,7 +359,24 @@ app.MapPost("/api/agent/intent", (AgentQueryRequest request, CircuitGraphBuilder
 
 app.MapGet("/api/agent/capabilities", async (InferenceCapabilityProbe probe) =>
 {
-    var status = await probe.ProbeCapabilitiesAsync();
+    var status = await probe.ProbeCapabilitiesAsync(forceRefresh: false);
+    return Results.Ok(status);
+});
+
+app.MapPost("/api/agent/capabilities/retry", async (InferenceCapabilityProbe probe) =>
+{
+    var status = await probe.ProbeCapabilitiesAsync(forceRefresh: true);
+    return Results.Ok(status);
+});
+
+app.MapPost("/api/agent/capabilities/apikey", async (ApiKeyUpdateRequest req, InferenceCapabilityProbe probe) =>
+{
+    if (string.IsNullOrWhiteSpace(req.ApiKey))
+    {
+        return Results.BadRequest(new { error = "La API Key no puede estar vacía" });
+    }
+    probe.SetGeminiApiKey(req.ApiKey);
+    var status = await probe.ProbeCapabilitiesAsync(forceRefresh: true);
     return Results.Ok(status);
 });
 
@@ -390,3 +405,5 @@ app.MapPost("/api/agent/stream", async (HttpContext httpContext, AgentQueryReque
 app.MapControllers();
 
 app.Run();
+
+public record ApiKeyUpdateRequest(string ApiKey);
