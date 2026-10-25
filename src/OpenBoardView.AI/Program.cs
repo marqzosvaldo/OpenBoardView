@@ -328,18 +328,21 @@ app.MapPost("/api/board/debugger/trace", async (
     var failureStats = await persistence.GetTopFailingComponentsAsync(boardId, request.QueryOrSymptom);
     var preset = await persistence.GetDiagnosticPresetAsync(boardId, request.QueryOrSymptom);
     var trace = mazeDebugger.BuildTrace(request, failureStats, preset);
-    var activeNode = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) ?? trace.Steps.First();
-    var wsPayload = new ObvUiCommandPayload(
-        Action: "maze_debugger",
-        Component: activeNode.ComponentId,
-        Net: !string.IsNullOrWhiteSpace(trace.TargetNet) ? trace.TargetNet : activeNode.OutputNet,
-        Quadrant: activeNode.Quadrant,
-        X: activeNode.X,
-        Y: activeNode.Y,
-        Message: trace.OverallDiagnosis,
-        MazeTrace: trace
-    );
-    await wsServer.BroadcastCommandAsync(wsPayload, ct);
+    var activeNode = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) ?? trace.Steps.FirstOrDefault();
+    if (activeNode != null)
+    {
+        var wsPayload = new ObvUiCommandPayload(
+            Action: "maze_debugger",
+            Component: activeNode.ComponentId,
+            Net: !string.IsNullOrWhiteSpace(trace.TargetNet) ? trace.TargetNet : activeNode.OutputNet,
+            Quadrant: activeNode.Quadrant,
+            X: activeNode.X,
+            Y: activeNode.Y,
+            Message: trace.OverallDiagnosis,
+            MazeTrace: trace
+        );
+        await wsServer.BroadcastCommandAsync(wsPayload, ct);
+    }
     return Results.Ok(trace);
 });
 

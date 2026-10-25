@@ -1,3 +1,4 @@
+using OpenBoardView.AI.Algorithms;
 using OpenBoardView.AI.Models;
 using OpenBoardView.AI.Parsers;
 
@@ -13,8 +14,8 @@ public record ComponentNodeSummary(
     int PinCount,
     bool ConnectedToGround,
     List<string> ConnectedNets,
-    string? SchematicContext,
-    List<int> SchematicPages,
+    string? SchematicContext = null,
+    List<int>? SchematicPages = null,
     string? SchematicValue = null,
     bool IsNoStuff = false);
 
@@ -43,7 +44,7 @@ public record UpstreamHopDto(
 /// Fase 3: Motor del Grafo y Dependencias.
 /// Une la topología física (.brd) y la semántica del esquemático (.pdf) en listas de adyacencia en memoria.
 /// </summary>
-public class CircuitGraphBuilder
+public class CircuitGraphBuilder : IBrdTopologyProvider
 {
     private readonly BoardTopology _topology;
     private readonly SchematicIndex? _schematicIndex;
@@ -100,6 +101,23 @@ public class CircuitGraphBuilder
         if (!_componentsById.TryGetValue(componentId.Trim(), out var comp)) return null;
 
         return MapComponentSummary(comp);
+    }
+
+    public bool IsComponentPinConnectedToGnd(string componentId)
+    {
+        var comp = GetComponentDetails(componentId);
+        return comp != null && comp.ConnectedToGround;
+    }
+
+    public List<string> GetParallelCapacitorIdsOnNet(string netName, string? excludeCompId = null)
+    {
+        var comps = GetComponentsOnNet(netName);
+        return comps
+            .Where(c => !c.IsNoStuff && c.Category == "Capacitor" && c.ConnectedToGround)
+            .Where(c => excludeCompId == null || !c.ComponentId.Equals(excludeCompId, StringComparison.OrdinalIgnoreCase))
+            .Select(c => c.ComponentId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>

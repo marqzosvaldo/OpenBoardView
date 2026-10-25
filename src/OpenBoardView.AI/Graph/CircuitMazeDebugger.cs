@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using OpenBoardView.AI.Algorithms;
 using OpenBoardView.AI.Knowledge;
 using OpenBoardView.AI.Models;
 
@@ -26,7 +27,10 @@ public record MazeStepDto(
     string? ExpectedReading = null,
     string? Branch = null,
     double? FailureProbability = null,
-    int? HistoricalFailureCount = null);
+    int? HistoricalFailureCount = null,
+    int OmittedParallelCount = 0,
+    string? Notes = null,
+    List<string>? ParallelComponentIds = null);
 
 public record MazeTraceResultDto(
     string TraceId,
@@ -38,13 +42,17 @@ public record MazeTraceResultDto(
     List<MazeStepDto> Steps,
     List<string>? Warnings = null,
     string TargetNet = "PPBUS_G3H",
-    List<ComponentFailureStat>? HistoricalFailureStats = null);
+    List<ComponentFailureStat>? HistoricalFailureStats = null,
+    List<MazeStepDto>? RawSteps = null,
+    List<MazeStepDto>? FilteredSteps = null,
+    bool IsFilterEnabled = true);
 
 public class MazeTraceRequestDto
 {
     public string QueryOrSymptom { get; set; } = "no carga";
     public int? ActiveStepNumber { get; set; }
     public int? BlockedAtStepNumber { get; set; }
+    public bool FilterParallelCapacitors { get; set; } = true;
 }
 
 /// <summary>Problema detectado al validar un flujo curado contra la placa cargada.</summary>
@@ -82,6 +90,7 @@ public class CircuitMazeDebugger
     private readonly CircuitGraphBuilder _graph;
     private readonly FlowKnowledgeBase _knowledge;
     private readonly NetVoltageResolver _voltageResolver;
+    private readonly StepperParallelFilterV3 _parallelFilter = new();
 
     private record RawStep(
         string CompId,
@@ -299,11 +308,18 @@ public class CircuitMazeDebugger
                 Steps: steps,
                 Warnings: warnings,
                 TargetNet: resolvedTargetNet,
-                HistoricalFailureStats: failureStats);
+                HistoricalFailureStats: failureStats,
+                RawSteps: steps,
+                FilteredSteps: steps,
+                IsFilterEnabled: request.FilterParallelCapacitors);
         }
 
-        activeStep = Math.Clamp(activeStep, 1, Math.Max(1, steps.Count));
-        var currentStepObj = steps.FirstOrDefault(s => s.StepNumber == (blockedStep > 0 ? blockedStep : activeStep)) ?? steps.First();
+        var (filteredSteps, expandedSteps) = _parallelFilter.ProcessMazeSteps(steps, _graph);
+        bool filterOn = request.FilterParallelCapacitors;
+        var activeSteps = filterOn ? filteredSteps : expandedSteps;
+
+        activeStep = Math.Clamp(activeStep, 1, Math.Max(1, activeSteps.Count));
+        var currentStepObj = activeSteps.FirstOrDefault(s => s.StepNumber == (blockedStep > 0 ? blockedStep : activeStep)) ?? activeSteps.First();
 
         string measurementTarget = string.Equals(currentStepObj.MeasurementMode, MeasurementModes.Resistance, StringComparison.OrdinalIgnoreCase) &&
                                    !string.IsNullOrWhiteSpace(currentStepObj.ExpectedReading)
@@ -312,7 +328,7 @@ public class CircuitMazeDebugger
 
         string overallDiag = blockedStep > 0
             ? $"🛑 MURO EN EL LABERINTO (Paso {blockedStep} - {currentStepObj.ComponentId}): La secuencia llegó hasta el Paso {Math.Max(1, blockedStep - 1)}, pero presenta anomalía en {currentStepObj.ComponentId} ({currentStepObj.OutputNet}). Diagnóstico: {currentStepObj.FailDiagnosis}"
-            : $"🧭 DEBUGGER EN PASO {activeStep}/{steps.Count} ({currentStepObj.ComponentId} - {currentStepObj.Quadrant}): Mide {measurementTarget} en {currentStepObj.PinToMeasure} ({currentStepObj.OutputNet}). Si es correcto, avanza al siguiente paso; si falla, presiona 'Marcar Falla Aquí'.";
+            : $"🧭 DEBUGGER EN PASO {activeStep}/{activeSteps.Count} ({currentStepObj.ComponentId} - {currentStepObj.Quadrant}): Mide {measurementTarget} en {currentStepObj.PinToMeasure} ({currentStepObj.OutputNet}). Si es correcto, avanza al siguiente paso; si falla, presiona 'Marcar Falla Aquí'.";
 
         return new MazeTraceResultDto(
             TraceId: Guid.NewGuid().ToString("N")[..8],
@@ -321,10 +337,13 @@ public class CircuitMazeDebugger
             CurrentStepNumber: activeStep,
             BlockedAtStepNumber: blockedStep > 0 ? blockedStep : null,
             OverallDiagnosis: overallDiag,
-            Steps: steps,
+            Steps: activeSteps,
             Warnings: warnings.Count > 0 ? warnings : null,
             TargetNet: resolvedTargetNet,
-            HistoricalFailureStats: failureStats
+            HistoricalFailureStats: failureStats,
+            RawSteps: expandedSteps,
+            FilteredSteps: filteredSteps,
+            IsFilterEnabled: filterOn
         );
     }
 

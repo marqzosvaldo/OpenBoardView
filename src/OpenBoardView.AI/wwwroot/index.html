@@ -518,9 +518,25 @@
 
       <!-- NUEVA FUNCIONALIDAD ADITIVA: Circuit Step Debugger (Modo Laberinto Paso a Paso) -->
       <div class="maze-debugger" id="mazeDebuggerPanel">
-        <div class="maze-header">
-          <span id="mazeHeaderTitle">🧭 Stepper: <span id="symptomLabel" style="color:#4ade80;">PPBUS_G3H</span></span>
-          <span id="mazeStepCounter" style="color:#fef08a;">LISTO</span>
+        <div class="maze-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span id="mazeHeaderTitle">🧭 Stepper: <span id="symptomLabel" style="color:#4ade80;">PPBUS_G3H</span></span>
+            <span id="badgeNodeCount" style="padding:2px 7px; font-size:10px; font-weight:700; background:rgba(56,189,248,0.18); color:#7dd3fc; border-radius:12px; border:1px solid #0284c7;">
+              -- Nodos
+            </span>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px;">
+            <!-- Switch Interactivo ON/OFF (Filtro Capacitores Paralelos v3) -->
+            <div style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;" onclick="toggleParallelFilter()" title="Alternar entre 1 capacitor representativo (ON) o todos los capacitores en paralelo para buscar cortos (OFF)">
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">Filtro Paralelos</span>
+              <button id="btnToggleParallelFilter" type="button" role="switch" aria-checked="true"
+                      style="position:relative; display:inline-flex; height:20px; width:38px; flex-shrink:0; cursor:pointer; border-radius:9999px; border:2px solid transparent; transition:background-color 0.2s ease; background-color:#2563eb; padding:0; outline:none;">
+                <span id="switchKnob" style="pointer-events:none; display:inline-block; height:16px; width:16px; transform:translateX(18px); border-radius:9999px; background-color:#ffffff; box-shadow:0 1px 2px 0 rgba(0, 0, 0, 0.4); transition:transform 0.2s ease;"></span>
+              </button>
+            </div>
+            <span id="mazeStepCounter" style="color:#fef08a; font-weight:700;">LISTO</span>
+          </div>
         </div>
 
         <!-- Banner de Análisis Autónomo Bajo Demanda (0 Tokens por Defecto) -->
@@ -606,6 +622,7 @@
     let highlightedNet = null;
     let activeSimulation = null;
     let activeMazeTrace = null;
+    let isParallelFilterActive = true;
     let mazeAutoPlayTimer = null;
     let liftedComponents = new Set();
     let selectedFaultCompId = null;
@@ -805,7 +822,12 @@
       const res = await fetch('/api/board/debugger/trace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queryOrSymptom, activeStepNumber, blockedAtStepNumber })
+        body: JSON.stringify({ 
+          queryOrSymptom, 
+          activeStepNumber, 
+          blockedAtStepNumber,
+          filterParallelCapacitors: isParallelFilterActive 
+        })
       });
       const trace = await res.json();
       applyMazeTrace(trace);
@@ -903,13 +925,70 @@
     function applyMazeTrace(trace, intent = null) {
       if (!trace || !trace.steps || trace.steps.length === 0) return;
       activeMazeTrace = trace;
+      activeMazeTrace.filteredSteps = trace.filteredSteps || trace.steps;
+      activeMazeTrace.rawSteps = trace.rawSteps || trace.steps;
+
+      activeMazeTrace.steps = isParallelFilterActive ? activeMazeTrace.filteredSteps : activeMazeTrace.rawSteps;
+      updateParallelFilterUI();
+
       const primaryNet = trace.targetNet || (intent && intent.primary_net) || (trace.steps[0] && trace.steps[0].outputNet) || 'PPBUS_G3H';
       syncUiWithActiveNet(primaryNet, trace, intent);
       renderMazeStepUI();
     }
 
+    function toggleParallelFilter() {
+      isParallelFilterActive = !isParallelFilterActive;
+      updateParallelFilterUI();
+
+      if (activeMazeTrace) {
+        const targetSteps = isParallelFilterActive ? activeMazeTrace.filteredSteps : activeMazeTrace.rawSteps;
+        if (targetSteps && targetSteps.length > 0) {
+          activeMazeTrace.steps = targetSteps;
+          activeMazeTrace.currentStepNumber = Math.min(activeMazeTrace.currentStepNumber || 1, targetSteps.length);
+          if (activeMazeTrace.blockedAtStepNumber) {
+            activeMazeTrace.blockedAtStepNumber = Math.min(activeMazeTrace.blockedAtStepNumber, targetSteps.length);
+          }
+          renderMazeStepUI();
+        }
+      }
+    }
+
+    function updateParallelFilterUI() {
+      const btn = document.getElementById('btnToggleParallelFilter');
+      const knob = document.getElementById('switchKnob');
+      const badge = document.getElementById('badgeNodeCount');
+
+      if (btn && knob) {
+        if (isParallelFilterActive) {
+          btn.style.backgroundColor = '#2563eb';
+          btn.setAttribute('aria-checked', 'true');
+          knob.style.transform = 'translateX(18px)';
+        } else {
+          btn.style.backgroundColor = '#475569';
+          btn.setAttribute('aria-checked', 'false');
+          knob.style.transform = 'translateX(2px)';
+        }
+      }
+
+      if (badge && activeMazeTrace && activeMazeTrace.steps) {
+        const count = activeMazeTrace.steps.length;
+        if (isParallelFilterActive) {
+          badge.textContent = `${count} Nodos (Filtrado)`;
+          badge.style.background = 'rgba(56,189,248,0.18)';
+          badge.style.borderColor = '#0284c7';
+          badge.style.color = '#7dd3fc';
+        } else {
+          badge.textContent = `${count} Nodos (Expandido)`;
+          badge.style.background = 'rgba(234,179,8,0.18)';
+          badge.style.borderColor = '#ca8a04';
+          badge.style.color = '#fde047';
+        }
+      }
+    }
+
     function renderMazeStepUI() {
       if (!activeMazeTrace) return;
+      updateParallelFilterUI();
       const steps = activeMazeTrace.steps;
       const currIdx = Math.min(Math.max(1, activeMazeTrace.currentStepNumber), steps.length);
       const step = steps.find(s => s.stepNumber === currIdx) || steps[0];
@@ -944,6 +1023,16 @@
             ⚡ Probabilidad Histórica de Falla: ${step.failureProbability.toFixed(0)}% (${step.historicalFailureCount} casos en taller)
           </div>`
         : '';
+      const parallelCapBadgeHtml = (step.omittedParallelCount && step.omittedParallelCount > 0)
+        ? `<div style="margin-top:5px; margin-bottom:5px; padding:4px 8px; background:rgba(56,189,248,0.15); border:1px solid #0284c7; border-radius:5px; color:#7dd3fc; font-size:11px;">
+             ⚡ <b>${step.componentId}</b> (+${step.omittedParallelCount} capacitores en paralelo omitidos en ${step.outputNet})
+             <span style="display:block; font-size:10px; color:#94a3b8; margin-top:2px;">Riel limpio para verificación de voltaje. Desactiva 'Filtro Paralelos' en el switch si buscas un cortocircuito a tierra.</span>
+           </div>`
+        : (step.notes && step.notes.includes('Modo Expandido'))
+          ? `<div style="margin-top:5px; margin-bottom:5px; padding:3px 7px; background:rgba(234,179,8,0.15); border:1px solid #ca8a04; border-radius:4px; color:#fde047; font-size:10.5px;">
+               🔍 <b>Modo Expandido:</b> ${step.componentId} (Capacitor individual en ${step.outputNet} para prueba de corto)
+             </div>`
+          : '';
       const sourceLabelHtml = step.dataSource === 'inferred'
         ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.15); border:1px solid #f59e0b; border-radius:4px; color:#fde68a; font-size:10.5px;">⚠ <b>Voltaje estimado</b> a partir del nombre de la red (no leído del esquemático). Verifícalo en el PDF antes de concluir.</div>`
         : step.dataSource === 'bridged'
@@ -953,6 +1042,7 @@
       document.getElementById('mazeStepDetails').innerHTML = `
         ${branchBadgeHtml}
         ${probBadgeHtml}
+        ${parallelCapBadgeHtml}
         <div style="font-weight:700; color:${blockedStep === step.stepNumber ? '#ef4444' : '#38bdf8'}; margin-bottom:3px;">
           ${step.stageTitle}
         </div>

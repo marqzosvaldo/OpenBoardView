@@ -128,16 +128,67 @@ public record StepMeasurementDto(
     string Status, // "PASSED", "FAILED", "SKIPPED"
     string? Note);
 
-public record StepperNodeDto(
-    int StepNumber,
-    string ComponentId,
-    string Pin,
-    string SignalName,
-    string Mode,
-    string ExpectedNominal,
-    string FaultNominal,
-    int SchematicPage,
-    string Description);
+public class StepperNodeDto
+{
+    public int StepNumber { get; set; }
+    public string ComponentId { get; set; } = string.Empty;
+    public string Pin { get; set; } = "1";
+    public string SignalName { get; set; } = string.Empty;
+    public string Mode { get; set; } = "VOLTAGE_DC";
+    public string ExpectedNominal { get; set; } = "0.00 V";
+    public string FaultNominal { get; set; } = "0.00 V";
+    public int SchematicPage { get; set; } = 1;
+    public string Description { get; set; } = string.Empty;
+    public int OmittedParallelCount { get; set; } = 0;
+    public string? Notes { get; set; }
+    public List<string>? ParallelComponentIds { get; set; }
+
+    public StepperNodeDto() { }
+
+    public StepperNodeDto(
+        int StepNumber,
+        string ComponentId,
+        string Pin,
+        string SignalName,
+        string Mode,
+        string ExpectedNominal,
+        string FaultNominal,
+        int SchematicPage,
+        string Description,
+        int OmittedParallelCount = 0,
+        string? Notes = null,
+        List<string>? ParallelComponentIds = null)
+    {
+        this.StepNumber = StepNumber;
+        this.ComponentId = ComponentId;
+        this.Pin = Pin;
+        this.SignalName = SignalName;
+        this.Mode = Mode;
+        this.ExpectedNominal = ExpectedNominal;
+        this.FaultNominal = FaultNominal;
+        this.SchematicPage = SchematicPage;
+        this.Description = Description;
+        this.OmittedParallelCount = OmittedParallelCount;
+        this.Notes = Notes;
+        this.ParallelComponentIds = ParallelComponentIds;
+    }
+
+    public StepperNodeDto Clone() => new()
+    {
+        StepNumber = this.StepNumber,
+        ComponentId = this.ComponentId,
+        Pin = this.Pin,
+        SignalName = this.SignalName,
+        Mode = this.Mode,
+        ExpectedNominal = this.ExpectedNominal,
+        FaultNominal = this.FaultNominal,
+        SchematicPage = this.SchematicPage,
+        Description = this.Description,
+        OmittedParallelCount = this.OmittedParallelCount,
+        Notes = this.Notes,
+        ParallelComponentIds = this.ParallelComponentIds != null ? new List<string>(this.ParallelComponentIds) : null
+    };
+}
 
 public record ColdImpedanceThresholdsDto(
     double ShortCircuitThresholdOhms,
