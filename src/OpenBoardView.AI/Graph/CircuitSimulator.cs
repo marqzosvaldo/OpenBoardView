@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
+using OpenBoardView.AI.Knowledge;
 using OpenBoardView.AI.Models;
 
 namespace OpenBoardView.AI.Graph;
@@ -34,7 +36,8 @@ public record NetVoltageStateDto(
     double NominalVoltage,
     double SimulatedVoltage,
     double ResistanceToGndOhms,
-    string Status); // "HEALTHY", "SHORTED_TO_GND", "OPEN_UNPOWERED", "INJECTED"
+    string Status, // "HEALTHY", "SHORTED_TO_GND", "OPEN_UNPOWERED", "INJECTED"
+    string VoltageSource = DataSources.Inferred);
 
 public record SimulationResultDto(
     string RootNet,
@@ -48,7 +51,11 @@ public record SimulationResultDto(
     string DiagnosticSummary,
     List<NetVoltageStateDto> NetStates,
     List<FlowEdgeDto> FlowEdges,
-    List<ThermalHotspotDto> ThermalHotspots);
+    List<ThermalHotspotDto> ThermalHotspots,
+    string VoltageSource = DataSources.Inferred,
+    string VerificationState = "THEORETICAL_SIMULATION",
+    int ParallelCandidateCount = 0,
+    List<string>? RecommendedIsolationBridges = null);
 
 public class SimulationRequestDto
 {
@@ -63,15 +70,26 @@ public class SimulationRequestDto
 
 /// <summary>
 /// Motor de Simulación Eléctrica DC, Continuidad al Levantar Componentes, Flujo de Corriente y Cámara Térmica (IR).
-/// Calcula propagación nodal sobre el grafo real .brd y modela disipación térmica P = I^2 * R.
+/// Resuelve tensiones jerárquicamente (1. JSON curado -> 2. Propiedad CAD VOLTAGE= del PDF -> 3. Prefijo PP explícito),
+/// modela buses en paralelo reales con puentes en serie demostrables (F, R shunt, L) y excluye componentes NO STUFF.
 /// </summary>
 public class CircuitSimulator
 {
     private readonly CircuitGraphBuilder _graph;
+    private readonly FlowKnowledgeBase? _knowledge;
+    private readonly NetVoltageResolver _voltages;
 
-    public CircuitSimulator(CircuitGraphBuilder graph)
+    public CircuitSimulator(CircuitGraphBuilder graph, FlowKnowledgeBase? knowledge = null)
     {
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
+        _knowledge = knowledge;
+        _voltages = new NetVoltageResolver(graph, knowledge);
+    }
+
+    public (double? Voltage, string Source) ResolveNominalVoltage(string netName)
+    {
+        var r = _voltages.Resolve(netName);
+        return (r.Voltage, r.Source);
     }
 
     public SimulationResultDto RunSimulation(SimulationRequestDto req)
@@ -79,33 +97,36 @@ public class CircuitSimulator
         string targetNet = string.IsNullOrWhiteSpace(req.NetName) ? "PPBUS_G3H" : req.NetName.Trim().ToUpperInvariant();
         var liftedSet = new HashSet<string>(req.LiftedComponentIds ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
 
-        double nominalV = InferNominalVoltage(targetNet);
+        var (resolvedNominalV, voltageSource) = ResolveNominalVoltage(targetNet);
+        double nominalV = resolvedNominalV ?? 0.0;
         double sourceV = req.InjectedVoltage.HasValue && req.InjectedVoltage.Value > 0
             ? req.InjectedVoltage.Value
-            : nominalV;
+            : (nominalV > 0 ? nominalV : 1.0);
         double maxCurrent = req.CurrentLimitAmps > 0 ? req.CurrentLimitAmps : 2.5;
         double rFault = Math.Max(0.05, req.FaultResistanceOhms);
 
-        // 1. Obtener componentes en la red principal y sus sub-ramas (a través de F, L, R)
+        // 1. Obtener componentes en la red principal y sus sub-ramas a 1-2 saltos (a través de F, L, R)
         var mainNetComponents = _graph.GetComponentsOnNet(targetNet);
         var hops = _graph.GetUpstreamPath(null, targetNet, maxDepth: 2);
+        var quadrants = _graph.GetHighDensityQuadrants(targetNet);
+        int parallelCandidateCount = quadrants.Sum(q => q.ShuntCapacitorsToGnd.Count);
 
-        // Seleccionar automáticamente un componente en corto realista si no se especificó uno
+        bool userSpecifiedFaultComp = !string.IsNullOrWhiteSpace(req.FaultedComponentId);
         string? faultCompId = req.FaultedComponentId?.Trim().ToUpperInvariant();
         ComponentNodeSummary? faultComp = null;
 
-        if (!string.IsNullOrWhiteSpace(faultCompId))
+        if (userSpecifiedFaultComp && faultCompId != null)
         {
             faultComp = _graph.GetComponentDetails(faultCompId);
         }
 
         if (faultComp == null)
         {
-            // Elegir el primer capacitor a GND en el cuadrante de mayor densidad
-            var quadrants = _graph.GetHighDensityQuadrants(targetNet);
+            // Elegir un candidato poblado (!IsNoStuff) conectado a GND para ejemplificar el escenario hipotético
             var topCapId = quadrants.SelectMany(q => q.ShuntCapacitorsToGnd).FirstOrDefault()
-                           ?? mainNetComponents.FirstOrDefault(c => c.Category == "Capacitor")?.ComponentId
-                           ?? mainNetComponents.FirstOrDefault()?.ComponentId;
+                           ?? mainNetComponents.FirstOrDefault(c => !c.IsNoStuff && c.Category == "Capacitor" && c.ConnectedToGround)?.ComponentId
+                           ?? mainNetComponents.FirstOrDefault(c => !c.IsNoStuff && c.Category == "Capacitor")?.ComponentId
+                           ?? mainNetComponents.FirstOrDefault(c => !c.IsNoStuff)?.ComponentId;
             if (topCapId != null)
             {
                 faultCompId = topCapId;
@@ -116,7 +137,35 @@ public class CircuitSimulator
         // 2. Identificar la fuente / punto de entrada de la línea (ej. F7040, L7030, U7000, L6995)
         var sourceComp = FindEntrySourceComponent(targetNet, mainNetComponents, hops, req.InjectionPointComponentId);
 
-        // 3. Evaluar si algún componente levantado (ej. F7040) aísla la fuente del componente en corto
+        // Identificar si el componente en falla está en una sub-rama separada por un puente en serie real (ej. R5400 -> PPBUS_S5_HS_COMPUTING_ISNS)
+        UpstreamHopDto? seriesBranchHop = null;
+        ComponentNodeSummary? seriesBranchBridge = null;
+        if (faultComp != null && !faultComp.ConnectedNets.Contains(targetNet, StringComparer.OrdinalIgnoreCase))
+        {
+            seriesBranchHop = hops.FirstOrDefault(h =>
+                h.FromNet.Equals(targetNet, StringComparison.OrdinalIgnoreCase) &&
+                faultComp.ConnectedNets.Contains(h.ToNet, StringComparer.OrdinalIgnoreCase));
+
+            if (seriesBranchHop != null)
+            {
+                seriesBranchBridge = _graph.GetComponentDetails(seriesBranchHop.ThroughComponentId);
+            }
+        }
+
+        // Puentes recomendados para aislar ramas en la práctica de taller
+        var isolationBridges = hops
+            .Where(h => h.Step == 1 && h.ComponentCategory is "Fuse" or "Resistor" or "Inductor/Coil")
+            .Select(h => h.ThroughComponentId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(6)
+            .ToList();
+        if (sourceComp != null && sourceComp.Category is "Fuse" or "Inductor/Coil" or "Resistor" &&
+            !isolationBridges.Contains(sourceComp.ComponentId, StringComparer.OrdinalIgnoreCase))
+        {
+            isolationBridges.Insert(0, sourceComp.ComponentId);
+        }
+
+        // 3. Evaluar si algún componente levantado (ej. F7040 o R5400) aísla la fuente del componente en corto
         bool shortIsolated = false;
         string? isolatingBridgeId = null;
 
@@ -125,16 +174,15 @@ public class CircuitSimulator
             var liftedDetails = _graph.GetComponentDetails(liftedId);
             if (liftedDetails != null && liftedDetails.Category is "Fuse" or "Inductor/Coil" or "Resistor")
             {
-                // Si se levanta el fusible de entrada (ej. F7040 en PPBUS_G3H) y no se está inyectando directamente después del fusible:
                 if (liftedDetails.ConnectedNets.Any(n => n.Equals(targetNet, StringComparison.OrdinalIgnoreCase)) &&
-                    string.IsNullOrWhiteSpace(req.InjectionPointComponentId))
+                    string.IsNullOrWhiteSpace(req.InjectionPointComponentId) &&
+                    (sourceComp == null || liftedDetails.ComponentId.Equals(sourceComp.ComponentId, StringComparison.OrdinalIgnoreCase)))
                 {
                     shortIsolated = true;
                     isolatingBridgeId = liftedDetails.ComponentId;
                     break;
                 }
 
-                // O si el componente en corto está en una sub-red alimentada por este puente levantado
                 if (faultComp != null && hops.Any(h =>
                         h.ThroughComponentId.Equals(liftedId, StringComparison.OrdinalIgnoreCase) &&
                         faultComp.ConnectedNets.Contains(h.ToNet, StringComparer.OrdinalIgnoreCase)))
@@ -147,7 +195,7 @@ public class CircuitSimulator
         }
 
         // 4. Cálculo eléctrico DC (Ley de Ohm + Límite de Corriente CC/CV)
-        double rSeriesPath = 0.12; // Resistencia de pistas + puente (fusible/shunt)
+        double rSeriesPath = 0.12;
         double totalResistance = rSeriesPath + rFault;
         double rawCurrent = shortIsolated ? 0.02 : (sourceV / totalResistance);
         double actualCurrent = shortIsolated ? 0.02 : Math.Min(maxCurrent, Math.Round(rawCurrent, 2));
@@ -163,20 +211,23 @@ public class CircuitSimulator
             var bridge = _graph.GetComponentDetails(isolatingBridgeId);
             var upstreamNet = bridge?.ConnectedNets.FirstOrDefault(n => !n.Equals(targetNet, StringComparison.OrdinalIgnoreCase))
                               ?? $"UPSTREAM_{isolatingBridgeId}";
+            var (upV, upSrc) = ResolveNominalVoltage(upstreamNet);
 
             netStates.Add(new NetVoltageStateDto(
                 NetName: upstreamNet,
-                NominalVoltage: nominalV,
-                SimulatedVoltage: nominalV,
+                NominalVoltage: upV ?? nominalV,
+                SimulatedVoltage: upV ?? nominalV,
                 ResistanceToGndOhms: 45000,
-                Status: "HEALTHY"));
+                Status: "HEALTHY",
+                VoltageSource: upSrc));
 
             netStates.Add(new NetVoltageStateDto(
                 NetName: targetNet,
                 NominalVoltage: nominalV,
                 SimulatedVoltage: 0.0,
                 ResistanceToGndOhms: rFault,
-                Status: "OPEN_UNPOWERED"));
+                Status: "OPEN_UNPOWERED",
+                VoltageSource: voltageSource));
         }
         else
         {
@@ -185,41 +236,45 @@ public class CircuitSimulator
                 NominalVoltage: nominalV,
                 SimulatedVoltage: collapsedVoltage,
                 ResistanceToGndOhms: rFault,
-                Status: req.InjectedVoltage.HasValue ? "INJECTED" : "SHORTED_TO_GND"));
+                Status: req.InjectedVoltage.HasValue ? "INJECTED" : "SHORTED_TO_GND",
+                VoltageSource: voltageSource));
         }
 
-        // Agregar sub-redes conectadas por puentes en serie
         foreach (var hop in hops.Take(6))
         {
             bool hopBridgeLifted = liftedSet.Contains(hop.ThroughComponentId);
+            var (hopV, hopSrc) = ResolveNominalVoltage(hop.ToNet);
             netStates.Add(new NetVoltageStateDto(
                 NetName: hop.ToNet,
-                NominalVoltage: InferNominalVoltage(hop.ToNet),
+                NominalVoltage: hopV ?? 0.0,
                 SimulatedVoltage: hopBridgeLifted || shortIsolated ? 0.0 : collapsedVoltage,
                 ResistanceToGndOhms: hopBridgeLifted ? 99999 : rFault * 2,
-                Status: hopBridgeLifted ? "OPEN_UNPOWERED" : "SHORTED_TO_GND"));
+                Status: hopBridgeLifted ? "OPEN_UNPOWERED" : "SHORTED_TO_GND",
+                VoltageSource: hopSrc));
         }
 
-        // 6. Construir Aristas de Flujo de Corriente Animado (FlowEdges)
+        // 6. Construir Aristas de Flujo de Corriente Realista (Topología en Estrella / Paralelo + Puentes en Serie Reales)
         var flowEdges = new List<FlowEdgeDto>();
         if (sourceComp != null && faultComp != null)
         {
-            // buscar nodos intermedios (puentes F, R, L) para que la ruta siga la geometría real de la placa
-            var waypoints = new List<ComponentNodeSummary> { sourceComp };
+            var waypoints = new List<(ComponentNodeSummary Node, string Net)> { (sourceComp, targetNet) };
 
-            var seriesBridges = mainNetComponents
-                .Where(c => c.Category is "Fuse" or "Resistor" or "Inductor/Coil" && c.ComponentId != sourceComp.ComponentId && c.ComponentId != faultComp.ComponentId)
-                .OrderBy(c => Distance(sourceComp.X, sourceComp.Y, c.X, c.Y))
-                .Take(2)
-                .ToList();
+            // Solo insertar un puente intermedio si DEMOSTRABLEMENTE conecta targetNet con la sub-red de faultComp (ej. R5400)
+            if (seriesBranchBridge != null && seriesBranchHop != null &&
+                seriesBranchBridge.ComponentId != sourceComp.ComponentId &&
+                seriesBranchBridge.ComponentId != faultComp.ComponentId)
+            {
+                waypoints.Add((seriesBranchBridge, seriesBranchHop.ToNet));
+            }
 
-            waypoints.AddRange(seriesBridges);
-            waypoints.Add(faultComp);
+            string finalNet = seriesBranchHop?.ToNet ?? targetNet;
+            waypoints.Add((faultComp, finalNet));
 
             for (int i = 0; i < waypoints.Count - 1; i++)
             {
-                var fromNode = waypoints[i];
-                var toNode = waypoints[i + 1];
+                var fromNode = waypoints[i].Node;
+                var toNode = waypoints[i + 1].Node;
+                string edgeNet = waypoints[i].Net;
                 bool isBlocked = shortIsolated || liftedSet.Contains(fromNode.ComponentId) || liftedSet.Contains(toNode.ComponentId);
 
                 flowEdges.Add(new FlowEdgeDto(
@@ -230,19 +285,24 @@ public class CircuitSimulator
                     ToComponentId: toNode.ComponentId,
                     ToX: toNode.X,
                     ToY: toNode.Y,
-                    NetName: targetNet,
+                    NetName: edgeNet,
                     ThroughSeriesComponentId: fromNode.ComponentId,
                     CurrentAmps: isBlocked ? 0.0 : actualCurrent,
                     Status: isBlocked ? "OPEN_ISOLATED" : "HIGH_CURRENT_FAULT"
                 ));
             }
 
-            // Agregar ramas secundarias para visualizar distribución en la red
-            foreach (var branchComp in mainNetComponents.Where(c => c.ComponentId != faultComp.ComponentId && c.ComponentId != sourceComp.ComponentId).Take(8))
+            // Ramas en paralelo sobre el mismo plano de cobre: sufren la caída de tensión, pero NO transportan la corriente del corto (0.0A)
+            foreach (var branchComp in mainNetComponents
+                         .Where(c => !c.IsNoStuff &&
+                                     c.ComponentId != faultComp.ComponentId &&
+                                     c.ComponentId != sourceComp.ComponentId &&
+                                     c.ComponentId != seriesBranchBridge?.ComponentId)
+                         .Take(8))
             {
                 bool isBlocked = shortIsolated || liftedSet.Contains(branchComp.ComponentId);
                 flowEdges.Add(new FlowEdgeDto(
-                    Id: $"BRANCH_{branchComp.ComponentId}",
+                    Id: $"PARALLEL_{branchComp.ComponentId}",
                     FromComponentId: sourceComp.ComponentId,
                     FromX: sourceComp.X,
                     FromY: sourceComp.Y,
@@ -251,13 +311,13 @@ public class CircuitSimulator
                     ToY: branchComp.Y,
                     NetName: targetNet,
                     ThroughSeriesComponentId: sourceComp.ComponentId,
-                    CurrentAmps: isBlocked ? 0.0 : Math.Round(actualCurrent * 0.12, 2),
+                    CurrentAmps: 0.0,
                     Status: isBlocked ? "OPEN_ISOLATED" : "NORMAL"
                 ));
             }
         }
 
-        // 7. Calcular Mapa de Calor / Cámara Térmica Infrarroja (P = I^2 * R)
+        // 7. Estimación Térmica Heurística (P = I^2 * R)
         var hotspots = new List<ThermalHotspotDto>();
         double ambientTempC = 25.0;
 
@@ -265,6 +325,7 @@ public class CircuitSimulator
         {
             double faultPowerW = Math.Round(actualCurrent * actualCurrent * rFault, 2);
             double faultTempC = Math.Min(135.0, Math.Round(ambientTempC + (faultPowerW * 38.0), 1));
+            string valInfo = !string.IsNullOrWhiteSpace(faultComp.SchematicValue) ? $" [{faultComp.SchematicValue}]" : string.Empty;
 
             hotspots.Add(new ThermalHotspotDto(
                 ComponentId: faultComp.ComponentId,
@@ -273,11 +334,11 @@ public class CircuitSimulator
                 Side: faultComp.Side,
                 X: faultComp.X,
                 Y: faultComp.Y,
-                NetName: targetNet,
+                NetName: seriesBranchHop?.ToNet ?? targetNet,
                 PowerWatts: faultPowerW,
                 EstimatedTempCelsius: faultTempC,
                 IntensityNormalized: Math.Clamp((faultTempC - ambientTempC) / 85.0, 0.25, 1.0),
-                Reason: $"Cortocircuito directo a GND ({rFault:F2} Ω). Disipa {faultPowerW:F2}W a {actualCurrent:F2}A."
+                Reason: $"Hipótesis de derivación a GND ({rFault:F2} Ω){valInfo}. Disipación estimada: {faultPowerW:F2}W a {actualCurrent:F2}A (modelo empírico ~38°C/W)."
             ));
 
             if (sourceComp != null && sourceComp.ComponentId != faultComp.ComponentId)
@@ -296,14 +357,34 @@ public class CircuitSimulator
                     PowerWatts: bridgePowerW,
                     EstimatedTempCelsius: bridgeTempC,
                     IntensityNormalized: Math.Clamp((bridgeTempC - ambientTempC) / 85.0, 0.15, 0.75),
-                    Reason: $"Calentamiento secundario por paso de corriente de falla ({actualCurrent:F2}A) en serie."
+                    Reason: $"Calentamiento secundario en elemento de entrada en serie ({actualCurrent:F2}A)."
                 ));
             }
         }
 
+        string verificationState = shortIsolated
+            ? "BRANCH_ISOLATION_TEST"
+            : (userSpecifiedFaultComp ? "HYPOTHETICAL_COMPONENT_FAULT" : "THEORETICAL_SIMULATION");
+
+        string noStuffWarning = faultComp is { IsNoStuff: true }
+            ? $" ⚠️ ATENCIÓN: El esquemático PDF marca a {faultComp.ComponentId} como NO STUFF (no viene soldado de fábrica)."
+            : string.Empty;
+
+        string branchExplanation = seriesBranchHop != null
+            ? $" a través del puente en serie {seriesBranchHop.ThroughComponentId} hacia la sub-rama '{seriesBranchHop.ToNet}'"
+            : string.Empty;
+
+        string candidateContext = userSpecifiedFaultComp
+            ? $"evaluando falla puntual en {faultComp?.ComponentId}"
+            : $"ejemplificado en {faultComp?.ComponentId} (1 de {Math.Max(1, parallelCandidateCount)} capacitores en paralelo a GND en esta red)";
+
+        string bridgesHint = isolationBridges.Count > 0
+            ? $" Para aislar la rama físicamente sin desoldar capacitores al azar, levanta o mide caída de tensión en: [{string.Join(", ", isolationBridges)}]."
+            : string.Empty;
+
         string summary = shortIsolated
-            ? $"✅ CORTO AISLADO: Al levantar [{string.Join(", ", liftedSet)}], el lado de generación recupera sus {nominalV:F2}V nominales y cesa el consumo hacia '{targetNet}'. El corto ({rFault:F2} Ω) queda confirmado del lado del sistema en {faultComp?.ComponentId} (Cuadrante {faultComp?.Quadrant})."
-            : $"🔥 CORTO ACTIVO EN '{targetNet}': La tensión cae de {nominalV:F2}V a {collapsedVoltage:F2}V drenando {actualCurrent:F2}A hacia tierra. Cámara térmica detecta punto caliente crítico en {faultComp?.ComponentId} ({faultComp?.Quadrant}, cara {faultComp?.Side}) alcanzando ~{hotspots.FirstOrDefault()?.EstimatedTempCelsius ?? 25.0:F1} °C.";
+            ? $"🔍 AISLAMIENTO SIMULADO (Hipótesis de bisección): Al levantar [{string.Join(", ", liftedSet)}], el nodo previo recupera sus {nominalV:F2}V (fuente: {voltageSource}) y cesa el drenaje hacia '{targetNet}'. Esto es consistente con una derivación a GND ({rFault:F2} Ω) aguas abajo{branchExplanation} ({candidateContext}).{noStuffWarning}"
+            : $"⚠️ HIPÓTESIS DE CORTO EN '{targetNet}' ({candidateContext}): Tensión nominal {nominalV:F2}V (fuente: {voltageSource}) colapsaría a {collapsedVoltage:F2}V drenando {actualCurrent:F2}A{branchExplanation}. Estimación térmica (~38°C/W): ~{hotspots.FirstOrDefault()?.EstimatedTempCelsius ?? 25.0:F1} °C en {faultComp?.ComponentId} ({faultComp?.Quadrant}, cara {faultComp?.Side}). Requiere medición física con multímetro/cámara IR.{bridgesHint}{noStuffWarning}";
 
         return new SimulationResultDto(
             RootNet: targetNet,
@@ -317,7 +398,11 @@ public class CircuitSimulator
             DiagnosticSummary: summary,
             NetStates: netStates,
             FlowEdges: flowEdges,
-            ThermalHotspots: hotspots
+            ThermalHotspots: hotspots,
+            VoltageSource: voltageSource,
+            VerificationState: verificationState,
+            ParallelCandidateCount: parallelCandidateCount,
+            RecommendedIsolationBridges: isolationBridges
         );
     }
 
@@ -333,54 +418,77 @@ public class CircuitSimulator
             if (exp != null) return exp;
         }
 
-        // Preferir fusibles (ej. F7040, F9700), luego bobinas (L7030, L6995), luego resistencias shunt (R5400, R7020) o ICs
-        var fuse = netComponents.FirstOrDefault(c => c.Category == "Fuse");
+        var fuse = netComponents.FirstOrDefault(c => !c.IsNoStuff && c.Category == "Fuse");
         if (fuse != null) return fuse;
 
         var hopFuseId = hops.FirstOrDefault(h => h.ComponentCategory == "Fuse")?.ThroughComponentId;
         if (hopFuseId != null) return _graph.GetComponentDetails(hopFuseId);
 
-        var inductor = netComponents.FirstOrDefault(c => c.Category == "Inductor/Coil");
+        var inductor = netComponents.FirstOrDefault(c => !c.IsNoStuff && c.Category == "Inductor/Coil");
         if (inductor != null) return inductor;
 
-        var ic = netComponents.FirstOrDefault(c => c.Category == "IC/Chip");
+        var ic = netComponents.FirstOrDefault(c => !c.IsNoStuff && c.Category == "IC/Chip");
         if (ic != null) return ic;
 
-        return netComponents.FirstOrDefault();
+        return netComponents.FirstOrDefault(c => !c.IsNoStuff) ?? netComponents.FirstOrDefault();
     }
 
-    private static double Distance(int x1, int y1, int x2, int y2)
+    /// <summary>
+    /// Infiere tensión nominal SOLO si el nombre de la red codifica explícitamente un riel de potencia.
+    /// Si es una señal lógica o nodo sin tensión explícita en su nombre, devuelve null (nunca inventa 3.3V).
+    /// </summary>
+    public static double? TryInferNominalVoltage(string? netName)
     {
-        double dx = x2 - x1;
-        double dy = y2 - y1;
-        return Math.Sqrt(dx * dx + dy * dy);
-    }
+        if (string.IsNullOrWhiteSpace(netName)) return null;
+        string u = netName.Trim().ToUpperInvariant().TrimStart('=');
 
-    public static double InferNominalVoltage(string netName)
-    {
-        if (string.IsNullOrWhiteSpace(netName)) return 3.3;
-        string u = netName.ToUpperInvariant();
+        if (u.Equals("GND") || u.StartsWith("GND_") || u.EndsWith("_GND") || u.Contains("VSS"))
+            return 0.0;
 
-        if (u.Contains("PPBUS_G3H") || u.Contains("PPVBAT_G3H")) return 12.56;
-        if (u.Contains("DCIN") || u.Contains("18V5")) return 16.5;
-        if (u.Contains("PP3V42")) return 3.42;
-        if (u.Contains("PP5V")) return 5.0;
-        if (u.Contains("PP3V3")) return 3.3;
-        if (u.Contains("PP1V8")) return 1.8;
-        if (u.Contains("PP1V5")) return 1.5;
-        if (u.Contains("PP1V05")) return 1.05;
-        if (u.Contains("VCORE") || u.Contains("CPU")) return 1.15;
-        if (u.Contains("LCDBKLT")) return 28.0;
+        // 1. Etapas alimentadas por PPBUS / PPVBAT antes de cualquier etapa elevadora (p. ej. PPBUS_S0_LCDBKLT_FUSED = 12.56V)
+        if (u.StartsWith("PPBUS") || u.StartsWith("PPVBAT") || u.StartsWith("PPVIN_S5_HS_") || u.StartsWith("PPVIN_S0_") || u.StartsWith("PPVIN_S3_"))
+            return 12.56;
 
-        var m = Regex.Match(u, @"PP(\d+)V(\d+)");
-        if (m.Success && double.TryParse($"{m.Groups[1].Value}.{m.Groups[2].Value}",
-                System.Globalization.NumberStyles.Any,
-                System.Globalization.CultureInfo.InvariantCulture,
-                out double parsed))
+        // 2. Salida ya elevada (Boost) de Backlight (solo después del diodo rectificador D9701: PPVOUT_SW_LCDBKLT)
+        if (u.StartsWith("PPVOUT") && u.Contains("LCDBKLT"))
+            return 28.5;
+
+        // 3. Entrada del adaptador MagSafe / DC-In
+        if (u.Contains("DCIN") || u.Contains("18V5"))
+            return 16.5;
+
+        // 4. Rieles explícitos de VCore / System Agent / VTT
+        if (u.StartsWith("PPVCORE") || u.StartsWith("PPCPUVCORE"))
+            return 1.15;
+        if (u.StartsWith("PPVCCSA"))
+            return 0.9;
+        if (u.StartsWith("PPVTT"))
+            return 0.75;
+        if (u.StartsWith("PPDDR"))
+            return 1.5;
+        if (u.StartsWith("PPCPUVCCIO") || u.StartsWith("PPVCCIO"))
+            return 1.05;
+        if (u.StartsWith("PPVRTC"))
+            return 3.3;
+
+        // 5. Expresión regular general para rieles codificados como PP<entero>V<decimal opcional> (ej. PP3V42, PP15V_T29, PP5V_S0, PP1V05_S0, PP0V75)
+        var m = Regex.Match(u, @"PP(\d+)V(\d+)?");
+        if (m.Success)
         {
-            return parsed;
+            string intPart = m.Groups[1].Value;
+            string decPart = m.Groups[2].Success ? m.Groups[2].Value : string.Empty;
+            string numeric = string.IsNullOrEmpty(decPart) ? intPart : $"{intPart}.{decPart}";
+
+            if (double.TryParse(numeric, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed))
+            {
+                return parsed;
+            }
         }
 
-        return 3.3;
+        // Si no es un riel PP con tensión codificada, devolver null en lugar de inventar 3.3V
+        return null;
     }
+
+    public static double InferNominalVoltage(string netName) =>
+        TryInferNominalVoltage(netName) ?? 0.0;
 }

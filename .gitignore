@@ -73,4 +73,8 @@ share
 **/obj/
 *.user
 *.suo
+appsettings.Development.json
+appsettings.Local.json
+.env
+Library/
 

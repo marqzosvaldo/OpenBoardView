@@ -8,6 +8,7 @@ using OpenBoardView.AI.Parsers;
 using OpenBoardView.AI.Server;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 builder.WebHost.UseUrls("http://127.0.0.1:5080");
 
 builder.Services.AddHttpClient();
@@ -63,7 +64,7 @@ builder.Services.AddSingleton<CircuitGraphBuilder>(sp =>
         Console.WriteLine($"[Fase 2] Indexando esquemático PDF: {Path.GetFileName(pdfFullPath)}...");
         var pdfReader = new SchematicPdfReader();
         schematicIndex = pdfReader.ReadAndIndexPdf(pdfFullPath, topology);
-        Console.WriteLine($"[Fase 2] OK -> Páginas: {schematicIndex.TotalPages} | Componentes con contexto PDF: {schematicIndex.ComponentContext.Count}");
+        Console.WriteLine($"[Fase 2] OK -> Páginas: {schematicIndex.TotalPages} | Componentes con contexto PDF: {schematicIndex.ComponentContext.Count} | Valores 2D: {schematicIndex.ComponentValues.Count} | Redes con VOLTAGE=: {schematicIndex.NetVoltages.Count} | NO STUFF: {schematicIndex.NoStuffComponents.Count}");
     }
 
     Console.WriteLine("[Fase 3] Construyendo grafo de circuito en memoria...");
@@ -298,7 +299,7 @@ app.MapPost("/api/board/debugger/trace", async (MazeTraceRequestDto request, Cir
     var wsPayload = new ObvUiCommandPayload(
         Action: "maze_debugger",
         Component: activeNode.ComponentId,
-        Net: activeNode.OutputNet,
+        Net: !string.IsNullOrWhiteSpace(trace.TargetNet) ? trace.TargetNet : activeNode.OutputNet,
         Quadrant: activeNode.Quadrant,
         X: activeNode.X,
         Y: activeNode.Y,
@@ -307,6 +308,12 @@ app.MapPost("/api/board/debugger/trace", async (MazeTraceRequestDto request, Cir
     );
     await wsServer.BroadcastCommandAsync(wsPayload, ct);
     return Results.Ok(trace);
+});
+
+app.MapPost("/api/agent/intent", (AgentQueryRequest request, CircuitGraphBuilder graph, FlowKnowledgeBase kb, CircuitMazeDebugger mazeDebugger) =>
+{
+    var intent = DiagnosticIntentParser.Parse(request.Prompt, graph, kb, mazeDebugger);
+    return Results.Ok(intent);
 });
 
 app.MapPost("/api/agent/query", async (AgentQueryRequest request, BoardDiagnosticsService agent, CancellationToken ct) =>

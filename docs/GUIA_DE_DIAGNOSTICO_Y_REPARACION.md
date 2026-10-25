@@ -128,13 +128,20 @@ Cuando un equipo no enciende o no carga, la falla siempre se origina en una lín
 ### Paso 2: Modo Multímetro Guiado (Circuit Step Debugger / Laberinto)
 En lugar de medir al azar, usa el panel **Circuit Step Debugger** ubicado en la esquina superior derecha del visor web:
 
-1. **Selecciona el síntoma:**
-   - *Ejemplo: "🔋 Síntoma: Mi laptop NO carga / PPBUS_G3H"*.
+1. **Selecciona el síntoma o árbol de decisión:**
+   - *Ejemplo 1:* `🔋 Síntoma: PPBUS_G3H Ausente / No Carga` (9 pasos).
+   - *Ejemplo 2:* `💡 Síntoma: PP3V42_G3H Ausente / Sin Luz MagSafe` (6 pasos).
+   - *Ejemplo 3:* `🖥 Síntoma: PPVOUT_SW_LCDBKLT Ausente / Sin Backlight` (6 pasos).
+   - *Ejemplo 4 (Bifurcación Lógica):* `⚡ Síntoma: PP5V_S3 Ausente / Árbol de Decisión` (6 pasos: Corto en riel `C6213` vs falta de habilitación `Q7221` / `PM_SLP_S4_L`).
+   - *Ejemplo 5 (Alimentación CPU):* `🧠 Síntoma: PPVCORE_S0_CPU Ausente / VCORE CPU` (5 pasos: Impedancia en bobinas `L7510`/`L7520`, señal global `ALL_SYS_PWRGD` en `R7402`/`Q7950`, y habilitación `CPU_VR_EN` en `U7400`).
 2. **Sigue las instrucciones en pantalla:**
    - El sistema dibuja un sendero con nodos numerados sobre la placa PCB.
-   - **Paso 1 (Conector DC-In J6900):** Te indica colocar la punta negra del multímetro en el chasis (tierra/GND) y la punta roja en el pin correspondiente. Te muestra el voltaje esperado: `16.50 V`.
+   - **Medición de Tensión DC:** Te indica colocar la punta negra en tierra (GND) y la roja en el pin a medir, mostrando la tensión esperada (ej. `16.50 V`, `3.42 V`, `12.56 V`).
+   - **Medición de Resistencia / Impedancia ($\Omega$):** En árboles de decisión (como `L7260` en `PP5V_S3`), te indica medir ohmios a tierra con la placa desenergizada para bifurcar el diagnóstico:
+     - **$< 5\ \Omega$ (ej. $0.4\ \Omega$):** Corto físico en el riel $\rightarrow$ avanza a **Rama 1** (aislar componentes de filtrado como `C6213`).
+     - **$> 1\ \text{k}\Omega$:** Riel íntegro sin corto $\rightarrow$ avanza a **Rama 2** (revisar tensiones auxiliares de `U7200`, compuerta de `Q7221` y estado `PM_SLP_S4_L` del PCH `U1800`).
 3. **Evalúa con el multímetro:**
-   - **¿Hay voltaje?** Presiona el botón verde **`✅ Hay Voltaje (Sig ⏩)`**. La animación de corriente avanzará al siguiente nodo (fusible, diodo o chip).
+   - **¿Hay voltaje / lectura esperada?** Presiona el botón verde **`✅ Hay Voltaje (Sig ⏩)`**. La animación de corriente avanzará al siguiente nodo (fusible, diodo o chip).
    - **¿El voltaje se cayó a 0V?** Presiona el botón rojo **`🛑 0V Aquí (Falla)`**.
    - **Diagnóstico Automático:** El sistema marcará un punto de interrupción (*breakpoint*) y te explicará la causa raíz:
      > *"Si hay 0V en la salida pero sí había voltaje en la entrada, el componente X está abierto/quemado, o la compuerta del MOSFET no está polarizada, o la línea de salida tiene un capacitor en cortocircuito a tierra."*

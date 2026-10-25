@@ -44,6 +44,12 @@ public sealed class SampleBoardFixture
     public CircuitMazeDebugger DebuggerFor(string boardFileName) =>
         new(Graph, KnowledgeFor(boardFileName));
 
+    public CircuitSimulator SimulatorFor(string boardFileName, bool ensurePdfIndexed = false)
+    {
+        if (ensurePdfIndexed) _ = Schematic;
+        return new CircuitSimulator(Graph, KnowledgeFor(boardFileName));
+    }
+
     private static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

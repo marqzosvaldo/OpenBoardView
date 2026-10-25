@@ -37,6 +37,8 @@ public class Component
     public List<Pin> Pins { get; set; } = new();
     public string? SchematicContext { get; set; }
     public List<int> SchematicPages { get; set; } = new();
+    public string? SchematicValue { get; set; }
+    public bool IsNoStuff { get; set; }
 
     public string Category => Id.Length > 0 ? char.ToUpperInvariant(Id[0]) switch
     {
@@ -59,6 +61,10 @@ public class Net
     public List<Pin> Pins { get; set; } = new();
     public string? SchematicContext { get; set; }
     public List<int> SchematicPages { get; set; } = new();
+    public double? SchematicVoltage { get; set; }
+    public int? SchematicVoltagePage { get; set; }
+    public string? BaseRailName { get; set; }
+    public bool IsSwitchNode { get; set; }
 
     public bool IsGround =>
         Name.Equals("GND", StringComparison.OrdinalIgnoreCase) ||

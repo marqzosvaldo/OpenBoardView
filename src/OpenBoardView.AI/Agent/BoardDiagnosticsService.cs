@@ -21,7 +21,8 @@ public record AgentQueryResponse(
     string? SuggestedQuadrant,
     SimulationResultDto? Simulation,
     MazeTraceResultDto? MazeTrace,
-    List<ObvUiCommandPayload> UiCommands);
+    List<ObvUiCommandPayload> UiCommands,
+    DiagnosticIntentDto? Intent = null);
 
 /// <summary>
 /// Orquestador del Agente de Diagnóstico para OpenBoardView sobre Microsoft.Extensions.AI (IChatClient).
@@ -31,15 +32,21 @@ public class BoardDiagnosticsService
     private readonly BoardDiagnosticsTools _tools;
     private readonly DiagnosticsAgentContext _context;
     private readonly IChatClient _chatClient;
+    private readonly CircuitMazeDebugger _mazeDebugger;
+    private readonly CircuitGraphBuilder _graph;
 
     public BoardDiagnosticsService(
         BoardDiagnosticsTools tools,
         DiagnosticsAgentContext context,
-        IChatClient chatClient)
+        IChatClient chatClient,
+        CircuitMazeDebugger mazeDebugger,
+        CircuitGraphBuilder graph)
     {
         _tools = tools;
         _context = context;
         _chatClient = chatClient;
+        _mazeDebugger = mazeDebugger;
+        _graph = graph;
     }
 
     public async Task<AgentQueryResponse> ProcessQueryAsync(
@@ -47,6 +54,9 @@ public class BoardDiagnosticsService
         CancellationToken cancellationToken = default)
     {
         var conversationId = request.ConversationId ?? Guid.NewGuid().ToString("N");
+
+        // Módulo 1: Extraer intención estructurada (primary_net, secondary_nets, primary_components, diagnostic_mode)
+        var intent = DiagnosticIntentParser.Parse(request.Prompt, _graph, _mazeDebugger.Knowledge, _mazeDebugger);
         var (messages, options) = PrepareContextAndTools(request.Prompt, request.History);
 
         string answerText = string.Empty;
@@ -59,19 +69,53 @@ public class BoardDiagnosticsService
         }
         catch (Exception ex)
         {
-            answerText = $"[Aviso del Motor IA]: Error al invocar IChatClient ({ex.Message}).";
+            if (ex.Message.Contains("400") || ex.Message.Contains("API_KEY_INVALID") || ex.Message.Contains("YOUR_GEMINI_API_KEY"))
+            {
+                answerText = "⚠️ [Aviso del Motor IA]: La API Key de Gemini no está configurada o es inválida.\n\n" +
+                             "Para activar el asistente inteligente por chat:\n" +
+                             "1. Obtén tu clave gratuita en https://aistudio.google.com/app/apikey\n" +
+                             "2. Configúrala en `src/OpenBoardView.AI/appsettings.json` o con la variable `export GEMINI_API_KEY=\"tu_clave\"`.\n\n" +
+                             "ℹ️ *Nota: Las herramientas deterministas (Modo Laberinto / Debugger, Grafo de Componentes y Simulador Eléctrico) funcionan al 100% de manera local sin necesidad de ninguna API Key.*";
+            }
+            else
+            {
+                answerText = $"[Aviso del Motor IA]: Error al invocar el proveedor de IA ({ex.Message}).";
+            }
         }
+
+        // Garantizar sincronización estricta entre el prompt (Intent.PrimaryNet) y el Step Debugger / BoardView:
+        // Si el LLM no invocó StartCircuitMazeDebuggerAsync, o si lo invocó con una red distinta a la primary_net extraída del prompt,
+        // inyectamos el prompt / primary_net al motor de rutas para evitar caer en fallbacks de síntomas anteriores.
+        if (!string.IsNullOrWhiteSpace(request.Prompt))
+        {
+            var matchedFlow = _mazeDebugger.Knowledge.FindFlow(request.Prompt);
+            var extractedNet = _mazeDebugger.ExtractTargetNetFromQuery(request.Prompt);
+
+            bool traceMissingOrMismatched = _context.LastMazeTrace is null ||
+                (!string.IsNullOrWhiteSpace(intent.PrimaryNet) &&
+                 !string.Equals(_context.LastMazeTrace.TargetNet, intent.PrimaryNet, StringComparison.OrdinalIgnoreCase));
+
+            if (traceMissingOrMismatched && (matchedFlow is not null || extractedNet is not null))
+            {
+                await _tools.StartCircuitMazeDebuggerAsync(request.Prompt);
+            }
+        }
+
+        string? resolvedInspectedNet = _context.LastMazeTrace?.TargetNet
+                                       ?? intent.PrimaryNet
+                                       ?? _context.LastInspectedNet;
 
         return new AgentQueryResponse(
             ConversationId: conversationId,
             ResponseText: answerText,
             ExecutedTools: _context.ExecutedTools.ToList(),
-            InspectedNet: _context.LastInspectedNet,
-            InspectedComponent: _context.LastInspectedComponent,
+            InspectedNet: resolvedInspectedNet,
+            InspectedComponent: _context.LastInspectedComponent ?? intent.PrimaryComponents.FirstOrDefault(),
             SuggestedQuadrant: _context.SuggestedQuadrant,
             Simulation: _context.LastSimulation,
             MazeTrace: _context.LastMazeTrace,
-            UiCommands: _context.SentUiCommands.ToList()
+            UiCommands: _context.SentUiCommands.ToList(),
+            Intent: intent
         );
     }
 

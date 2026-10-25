@@ -14,7 +14,9 @@ public record ComponentNodeSummary(
     bool ConnectedToGround,
     List<string> ConnectedNets,
     string? SchematicContext,
-    List<int> SchematicPages);
+    List<int> SchematicPages,
+    string? SchematicValue = null,
+    bool IsNoStuff = false);
 
 public record QuadrantDensitySummary(
     string Quadrant,
@@ -63,6 +65,15 @@ public class CircuitGraphBuilder
     }
 
     public BoardTopology Topology => _topology;
+    public SchematicIndex? SchematicIndex => _schematicIndex;
+
+    public Net? GetNetDetails(string netName) => ResolveNet(netName);
+
+    /// <summary>Solo coincidencia exacta (sin búsqueda por subcadena). Usar cuando un falso positivo daría un dato erróneo.</summary>
+    public Net? GetNetExact(string netName) =>
+        !string.IsNullOrWhiteSpace(netName) && _netsByName.TryGetValue(netName.Trim(), out var n) ? n : null;
+
+    public bool NetExists(string netName) => GetNetExact(netName) != null;
 
     public List<string> SearchNetNames(string query, int limit = 25)
     {
@@ -108,7 +119,8 @@ public class CircuitGraphBuilder
         }
 
         return result
-            .OrderByDescending(c => c.Category == "Capacitor" && c.ConnectedToGround)
+            .OrderBy(c => c.IsNoStuff)
+            .ThenByDescending(c => c.Category == "Capacitor" && c.ConnectedToGround)
             .ThenByDescending(c => c.Category == "IC/Chip")
             .ThenBy(c => c.ComponentId)
             .ToList();
@@ -148,7 +160,7 @@ public class CircuitGraphBuilder
                 ResistorInductorCount: g.Count(c => c.Category is "Resistor" or "Inductor/Coil" or "Fuse"),
                 TopSideCount: g.Count(c => c.Side == nameof(MountingSide.Top)),
                 BottomSideCount: g.Count(c => c.Side == nameof(MountingSide.Bottom)),
-                ShuntCapacitorsToGnd: g.Where(c => c.Category == "Capacitor" && c.ConnectedToGround).Select(c => c.ComponentId).ToList(),
+                ShuntCapacitorsToGnd: g.Where(c => !c.IsNoStuff && c.Category == "Capacitor" && c.ConnectedToGround).Select(c => c.ComponentId).ToList(),
                 AllComponentIds: g.Select(c => c.ComponentId).ToList()
             ))
             .OrderByDescending(q => q.ShuntCapacitorsToGnd.Count)
@@ -314,7 +326,9 @@ public class CircuitGraphBuilder
             ConnectedToGround: hasGround,
             ConnectedNets: nets,
             SchematicContext: comp.SchematicContext,
-            SchematicPages: comp.SchematicPages
+            SchematicPages: comp.SchematicPages,
+            SchematicValue: comp.SchematicValue,
+            IsNoStuff: comp.IsNoStuff
         );
     }
 }

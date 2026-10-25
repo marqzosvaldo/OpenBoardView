@@ -208,10 +208,12 @@ public class BoardDiagnosticsTools
         _context.LastMazeTrace = trace;
         var activeNode = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) ?? trace.Steps.First();
 
+        string primaryNet = !string.IsNullOrWhiteSpace(trace.TargetNet) ? trace.TargetNet : activeNode.OutputNet;
+
         var wsPayload = new ObvUiCommandPayload(
             Action: "maze_debugger",
             Component: activeNode.ComponentId,
-            Net: activeNode.OutputNet,
+            Net: primaryNet,
             Quadrant: activeNode.Quadrant,
             X: activeNode.X,
             Y: activeNode.Y,
@@ -223,7 +225,7 @@ public class BoardDiagnosticsTools
         _context.SentUiCommands.Add(wsPayload);
         _context.RegisterToolCall(
             nameof(StartCircuitMazeDebuggerAsync),
-            net: activeNode.OutputNet,
+            net: primaryNet,
             component: activeNode.ComponentId,
             quadrant: activeNode.Quadrant);
 

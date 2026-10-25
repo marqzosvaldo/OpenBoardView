@@ -21,7 +21,7 @@ public class GeminiChatClient : IChatClient
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _apiKey = apiKey ?? throw new ArgumentNullException(nameof(apiKey));
-        _model = string.IsNullOrWhiteSpace(model) ? "gemini-3.1-flash-lite" : model;
+        _model = string.IsNullOrWhiteSpace(model) ? "gemini-2.0-flash" : model;
         _metadata = new ChatClientMetadata("GoogleGemini", new Uri("https://generativelanguage.googleapis.com"), _model);
     }
 
@@ -272,6 +272,19 @@ public class GeminiChatClient : IChatClient
                 };
             }
         }
+
+        var generationConfig = new JsonObject
+        {
+            ["thinkingConfig"] = new JsonObject
+            {
+                ["thinkingBudget"] = 0
+            }
+        };
+        if (options?.Temperature.HasValue == true)
+        {
+            generationConfig["temperature"] = options.Temperature.Value;
+        }
+        root["generationConfig"] = generationConfig;
 
         return root;
     }

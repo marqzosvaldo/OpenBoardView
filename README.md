@@ -8,7 +8,7 @@
 > - 🤖 **AI Diagnostics Assistant** powered by **.NET 10** & **`Microsoft.Extensions.AI`** (supporting Gemini, Ollama, and OpenAI).
 > - ⚡ **DC Bench Power Supply & Voltage Injection Simulator** with animated current flow particles and Ohm's law calculations.
 > - 🌡 **Thermal IR Infrared Camera (FLIR glow)** simulation for hotspot localization.
-> - 🧭 **Circuit Step Debugger (Interactive Maze Debugger)**: Trace power and signal lines node-by-node, measure expected voltages, set fault breakpoints, and diagnose why a laptop won't charge or turn on.
+> - 🧭 **Circuit Step Debugger (Interactive Maze Debugger)**: Trace power and signal lines node-by-node, measure expected voltages or resistance impedance ($\Omega$), evaluate branching decision trees (e.g. short to GND vs missing PCH enable signals), set fault breakpoints, and diagnose why a laptop won't charge or turn on.
 > - 📄 **PDF Schematic Indexer**: Cross-references `.brd` components with electronic schematic diagrams automatically.
 > - 🔓 **Apple `.brd` Native Decryption**: Direct bit-shift decryption support for encrypted Apple boardview formats (e.g., MacBook 820-3115-B).
 > - 🔌 **Bidirectional WebSocket Bridge**: Seamlessly synchronizes camera zoom, component selection, and AI suggestions between the native C++ ImGui app and the web visualizer.
@@ -246,13 +246,15 @@ This fork introduces a dedicated backend written in **C# / .NET 10** utilizing *
 
 #### 2. Circuit Step Debugger / Modo Laberinto (Multimeter Guided Tracing)
 Located at the top-right of the canvas, this tool guides you step-by-step through power paths like a maze:
-1. **Select a Symptom Preset:**
+1. **Select a Symptom Preset or Decision Tree:**
    - `Mi laptop NO carga / PPBUS_G3H` (9-step trace from MagSafe `J6900` to battery charger).
    - `Sin Luz Verde en MagSafe / 3V42` (6-step trace for One-Wire and SMC power).
    - `Pantalla Oscura / Sin Backlight` (6-step trace for LCD backlight boost circuit).
+   - `Árbol de Decisión: PP5V_S3 = 0V` (6-step branching tree: Short in rail `C6213` vs `Q7221` / `PM_SLP_S4_L` PCH enable fault).
+   - `Diagnóstico: PPVCORE_S0_CPU Ausente` (5-step CPU VCore sequence: phase coils `L7510`/`L7520` impedance, `ALL_SYS_PWRGD` on `R7402`/`Q7950`, `U7400` VDD/VIN, and `CPU_VR_EN`).
 2. **Measure with your Multimeter:**
-   - Place your multimeter's black probe on GND (chassis) and red probe on the indicated component pin.
-   - Compare your measurement with the **Expected Voltage** (e.g. `16.50 V`, `3.42 V`, `12.56 V`).
+   - **Voltage Mode (DC):** Place black probe on GND (chassis) and red probe on the indicated component pin. Compare with **Expected Voltage** (e.g. `16.50 V`, `3.42 V`, `12.56 V`).
+   - **Resistance Mode ($\Omega$ / Diode):** For decision tree steps (e.g. `L7260`), measure impedance to ground to determine if the rail is shorted ($< 5\ \Omega$) or if it is unpowered due to a missing enable signal ($> 1\ \text{k}\Omega$).
 3. **Step Navigation:**
    - **Voltage Present?** Click **`✅ Hay Voltaje (Sig ⏩)`** to advance to the next circuit node.
    - **Voltage Dropped to 0V?** Click **`🛑 0V Aquí (Falla)`**. The debugger marks a fault breakpoint and displays an instant diagnostic explanation (e.g. blown fuse, unpolarized MOSFET gate, or shorted capacitor).

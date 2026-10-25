@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using OpenBoardView.AI.Knowledge;
 using OpenBoardView.AI.Models;
 
@@ -19,8 +20,11 @@ public record MazeStepDto(
     string HowItWorks,
     string FailDiagnosis,
     string Status, // "PASSED", "ACTIVE_STEP", "BLOCKED_FAULT", "PENDING"
-    string DataSource = DataSources.Curated, // "curated" (escrito por experto) | "inferred" (heurística)
-    bool ComponentFound = true);             // false si el componente no existe en el .brd cargado
+    string DataSource = DataSources.Curated, // "curated" | "schematic_pdf" | "bridged" | "inferred"
+    bool ComponentFound = true,              // false si el componente no existe en el .brd cargado
+    string MeasurementMode = MeasurementModes.Voltage,
+    string? ExpectedReading = null,
+    string? Branch = null);
 
 public record MazeTraceResultDto(
     string TraceId,
@@ -30,7 +34,8 @@ public record MazeTraceResultDto(
     int? BlockedAtStepNumber,
     string OverallDiagnosis,
     List<MazeStepDto> Steps,
-    List<string>? Warnings = null);
+    List<string>? Warnings = null,
+    string TargetNet = "PPBUS_G3H");
 
 public class MazeTraceRequestDto
 {
@@ -47,21 +52,53 @@ public record KnowledgeIssue(string FlowId, int StepNumber, string Kind, string 
 /// Modela el viaje secuencial de la corriente/señales a través de puertas lógicas, fusibles, reguladores y MOSFETs
 /// como un Debugger interactivo (Step Over / Play / Breakpoint) sin sustituir la simulación DC ni la cámara térmica.
 /// Los flujos curados provienen de archivos JSON (<see cref="FlowKnowledgeBase"/>) y solo se aplican a las placas
-/// que declaran; para cualquier otra placa se calcula una ruta topológica sobre el grafo BRD.
+/// que declaran; para cualquier otra consulta se extrae la red objetivo del prompt, se filtra por dominio funcional
+/// y se calculan los voltajes respetando puentes de baja impedancia.
 /// </summary>
 public class CircuitMazeDebugger
 {
+    private static readonly Regex TokenRegex = new(
+        @"\b([A-Za-z][A-Za-z0-9_<>]{2,})\b",
+        RegexOptions.Compiled);
+
+    private static readonly string[] PeripheralDomainMarkers =
+    {
+        "T29", "TBT", "FW", "FIREWIRE", "LCDBKLT", "BKL", "ODD", "ALS", "CAMERA", "KBDLED", "SPKR", "AUD_", "AUDIO"
+    };
+
+    private static readonly string[] SenseFeedbackMarkers =
+    {
+        "_ISNS1_", "_ISNS2_", "_ISNS3_", "_ISNS_", "ISNS_", "CHGR_CSI_", "CHGR_CSO_", "_CSIP", "_CSIN", "_CSOP", "_CSON"
+    };
+
+    private static readonly HashSet<string> GenericSymptomKeywords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "carga", "bateria", "batería", "enciende", "magsafe", "verde", "backlight", "pantalla", "brillo", "corto"
+    };
+
     private readonly CircuitGraphBuilder _graph;
     private readonly FlowKnowledgeBase _knowledge;
+    private readonly NetVoltageResolver _voltageResolver;
 
     private record RawStep(
-        string CompId, string StageTitle, string InputNet, string OutputNet, double ExpectedV,
-        string PinHint, string HowItWorks, string FailDiag, string DataSource);
+        string CompId,
+        string StageTitle,
+        string InputNet,
+        string OutputNet,
+        double ExpectedV,
+        string PinHint,
+        string HowItWorks,
+        string FailDiag,
+        string DataSource,
+        string MeasurementMode = MeasurementModes.Voltage,
+        string? ExpectedReading = null,
+        string? Branch = null);
 
     public CircuitMazeDebugger(CircuitGraphBuilder graph, FlowKnowledgeBase knowledge)
     {
         _graph = graph ?? throw new ArgumentNullException(nameof(graph));
         _knowledge = knowledge ?? throw new ArgumentNullException(nameof(knowledge));
+        _voltageResolver = new NetVoltageResolver(_graph, _knowledge);
     }
 
     public FlowKnowledgeBase Knowledge => _knowledge;
@@ -75,24 +112,42 @@ public class CircuitMazeDebugger
         List<RawStep> rawSteps;
         string title;
         string symptomDesc;
+        string resolvedTargetNet;
 
         var flow = _knowledge.FindFlow(q);
         if (flow != null)
         {
             title = flow.Title;
             symptomDesc = flow.Symptom;
+            resolvedTargetNet = !string.IsNullOrWhiteSpace(flow.TargetNet)
+                ? flow.TargetNet
+                : (ExtractTargetNetFromQuery(rawQuery) ?? flow.Steps.FirstOrDefault()?.OutputNet ?? "PPBUS_G3H");
             rawSteps = flow.Steps
-                .Select(s => new RawStep(s.Component, s.Stage, s.InputNet, s.OutputNet, s.ExpectedVoltage,
-                    s.PinToMeasure, s.HowItWorks, s.FailDiagnosis,
-                    string.IsNullOrWhiteSpace(s.VoltageSource) ? DataSources.Curated : s.VoltageSource))
+                .Select(s => new RawStep(
+                    s.Component,
+                    s.Stage,
+                    s.InputNet,
+                    s.OutputNet,
+                    s.ExpectedVoltage,
+                    s.PinToMeasure,
+                    s.HowItWorks,
+                    s.FailDiagnosis,
+                    string.IsNullOrWhiteSpace(s.VoltageSource) ? DataSources.Curated : s.VoltageSource,
+                    string.IsNullOrWhiteSpace(s.MeasurementMode) ? MeasurementModes.Voltage : s.MeasurementMode,
+                    s.ExpectedReading,
+                    s.Branch))
                 .ToList();
         }
         else
         {
-            // Rastreador dinámico sobre el grafo para cualquier red o componente personalizado
-            title = $"Laberinto Dinámico de Señal/Potencia: {rawQuery.ToUpperInvariant()}";
-            symptomDesc = $"Ruta topológica calculada automáticamente en el grafo BRD para '{rawQuery}'.";
-            rawSteps = BuildDynamicGraphSequence(rawQuery);
+            string? targetNet = ExtractTargetNetFromQuery(rawQuery);
+            string displayTarget = targetNet ?? rawQuery.Trim().ToUpperInvariant();
+            resolvedTargetNet = targetNet ?? "PPBUS_G3H";
+            title = $"Laberinto Dinámico de Señal/Potencia: {displayTarget}";
+            symptomDesc = targetNet != null
+                ? $"Ruta topológica filtrada por bloque funcional en el grafo BRD para la red '{targetNet}'."
+                : $"Ruta topológica calculada automáticamente en el grafo BRD para '{rawQuery}'.";
+            rawSteps = targetNet != null ? BuildDynamicGraphSequence(targetNet) : new List<RawStep>();
             warnings.Add(_knowledge.Applicable.Count == 0
                 ? "No hay un flujo curado para esta placa: la ruta se calculó solo con la topología del .brd y los voltajes esperados son una estimación a partir del nombre de la red. Verifícalos contra el esquemático."
                 : "La consulta no coincide con ningún flujo curado: la ruta se calculó solo con la topología del .brd y los voltajes esperados son una estimación a partir del nombre de la red. Verifícalos contra el esquemático.");
@@ -154,7 +209,10 @@ public class CircuitMazeDebugger
                 FailDiagnosis: item.FailDiag,
                 Status: status,
                 DataSource: item.DataSource,
-                ComponentFound: found
+                ComponentFound: found,
+                MeasurementMode: item.MeasurementMode,
+                ExpectedReading: item.ExpectedReading,
+                Branch: item.Branch
             ));
 
             stepIdx++;
@@ -170,15 +228,21 @@ public class CircuitMazeDebugger
                 BlockedAtStepNumber: null,
                 OverallDiagnosis: $"No se pudo construir una ruta para '{rawQuery}': no hay un flujo curado ni se encontraron redes o componentes coincidentes en la placa cargada.",
                 Steps: steps,
-                Warnings: warnings);
+                Warnings: warnings,
+                TargetNet: resolvedTargetNet);
         }
 
         activeStep = Math.Clamp(activeStep, 1, Math.Max(1, steps.Count));
         var currentStepObj = steps.FirstOrDefault(s => s.StepNumber == (blockedStep > 0 ? blockedStep : activeStep)) ?? steps.First();
 
+        string measurementTarget = string.Equals(currentStepObj.MeasurementMode, MeasurementModes.Resistance, StringComparison.OrdinalIgnoreCase) &&
+                                   !string.IsNullOrWhiteSpace(currentStepObj.ExpectedReading)
+            ? $"resistencia a GND ({currentStepObj.ExpectedReading})"
+            : $"{currentStepObj.ExpectedVoltage:F2}V";
+
         string overallDiag = blockedStep > 0
-            ? $"🛑 MURO EN EL LABERINTO (Paso {blockedStep} - {currentStepObj.ComponentId}): La corriente llegó con éxito hasta el Paso {Math.Max(1, blockedStep - 1)}, pero se interrumpe en {currentStepObj.ComponentId} ({currentStepObj.OutputNet}). Causa probable: {currentStepObj.FailDiagnosis}"
-            : $"🧭 DEBUGGER EN PASO {activeStep}/{steps.Count} ({currentStepObj.ComponentId} - {currentStepObj.Quadrant}): Mide {currentStepObj.ExpectedVoltage:F2}V en {currentStepObj.PinToMeasure} ({currentStepObj.OutputNet}). Si está presente, avanza al siguiente paso; si marca 0V, presiona 'Marcar Falla Aquí'.";
+            ? $"🛑 MURO EN EL LABERINTO (Paso {blockedStep} - {currentStepObj.ComponentId}): La secuencia llegó hasta el Paso {Math.Max(1, blockedStep - 1)}, pero presenta anomalía en {currentStepObj.ComponentId} ({currentStepObj.OutputNet}). Diagnóstico: {currentStepObj.FailDiagnosis}"
+            : $"🧭 DEBUGGER EN PASO {activeStep}/{steps.Count} ({currentStepObj.ComponentId} - {currentStepObj.Quadrant}): Mide {measurementTarget} en {currentStepObj.PinToMeasure} ({currentStepObj.OutputNet}). Si es correcto, avanza al siguiente paso; si falla, presiona 'Marcar Falla Aquí'.";
 
         return new MazeTraceResultDto(
             TraceId: Guid.NewGuid().ToString("N")[..8],
@@ -188,13 +252,82 @@ public class CircuitMazeDebugger
             BlockedAtStepNumber: blockedStep > 0 ? blockedStep : null,
             OverallDiagnosis: overallDiag,
             Steps: steps,
-            Warnings: warnings.Count > 0 ? warnings : null
+            Warnings: warnings.Count > 0 ? warnings : null,
+            TargetNet: resolvedTargetNet
         );
     }
 
     /// <summary>
+    /// Extrae el nombre de la red objetivo desde una consulta en lenguaje natural o identificador directo.
+    /// Evita pasar una oración entera a SearchNetNames (lo que antes provocaba caer en PPBUS_G3H por defecto).
+    /// </summary>
+    public string? ExtractTargetNetFromQuery(string? rawQuery)
+    {
+        if (string.IsNullOrWhiteSpace(rawQuery))
+            return "PPBUS_G3H";
+
+        string trimmed = rawQuery.Trim();
+
+        // 1. Si toda la cadena ya es una red exacta de la placa
+        if (_graph.NetExists(trimmed))
+            return _graph.GetNetExact(trimmed)!.Name;
+
+        // 2. Extraer tokens candidatos de la oración
+        var tokens = TokenRegex.Matches(trimmed)
+            .Select(m => m.Groups[1].Value.TrimStart('='))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // 2a. Coincidencia exacta con una red del .brd (priorizando rieles de alimentación PP... sobre señales secundarias)
+        var exactNets = tokens
+            .Select(t => _graph.GetNetExact(t))
+            .Where(n => n != null && !n.IsGround && !n.IsUnconnected)
+            .Select(n => n!.Name)
+            .ToList();
+
+        if (exactNets.Count > 0)
+        {
+            return exactNets.FirstOrDefault(n => n.StartsWith("PP", StringComparison.OrdinalIgnoreCase))
+                   ?? exactNets.First();
+        }
+
+        // 2b. Coincidencia por subcadena para tokens técnicos con formato de red (ej. 5V_S3, 3V42, PPBUS)
+        foreach (var tok in tokens.Where(t => t.Contains('_') || t.StartsWith("PP", StringComparison.OrdinalIgnoreCase)))
+        {
+            var found = _graph.SearchNetNames(tok, 5);
+            if (found.Count > 0)
+                return found[0];
+        }
+
+        // 2c. Si el usuario mencionó un ID de componente válido (ej. Q7221, U7200, L7260), usar su red principal
+        foreach (var tok in tokens)
+        {
+            var comp = _graph.GetComponentDetails(tok);
+            if (comp != null && comp.ConnectedNets.Count > 0)
+            {
+                return comp.ConnectedNets.FirstOrDefault(n => n.StartsWith("PP", StringComparison.OrdinalIgnoreCase))
+                       ?? comp.ConnectedNets.FirstOrDefault(n => !n.Contains("GND", StringComparison.OrdinalIgnoreCase))
+                       ?? comp.ConnectedNets[0];
+            }
+        }
+
+        // 3. Búsqueda directa si es una consulta corta de una sola palabra
+        if (!trimmed.Contains(' '))
+        {
+            var direct = _graph.SearchNetNames(trimmed, 5);
+            if (direct.Count > 0)
+                return direct[0];
+        }
+
+        // 4. Si es un síntoma genérico ("no carga", "sin luz verde") en una placa sin flujo curado aplicable, iniciar en PPBUS_G3H
+        if (tokens.Any(t => GenericSymptomKeywords.Contains(t)))
+            return "PPBUS_G3H";
+
+        return null;
+    }
+
+    /// <summary>
     /// Comprueba que cada componente y red citados por los flujos curados aplicables existan en la placa cargada.
-    /// Un flujo curado que cita algo inexistente es un error de datos que no debe llegar al técnico.
     /// </summary>
     public List<KnowledgeIssue> ValidateKnowledge()
     {
@@ -216,7 +349,6 @@ public class CircuitMazeDebugger
                     if (!netNames.Contains(step.OutputNet))
                         issues.Add(new KnowledgeIssue(flow.Id, n, "MissingNet", step.OutputNet));
 
-                    // El componente debe estar físicamente conectado a la red de entrada o a la de salida del paso.
                     if (comp != null &&
                         netNames.Contains(step.InputNet) && netNames.Contains(step.OutputNet) &&
                         !comp.ConnectedNets.Contains(step.InputNet, StringComparer.OrdinalIgnoreCase) &&
@@ -240,21 +372,58 @@ public class CircuitMazeDebugger
         return _graph.GetComponentsOnNet(inNet).FirstOrDefault();
     }
 
-    private List<RawStep> BuildDynamicGraphSequence(string query)
+    /// <summary>
+    /// Calcula el voltaje esperado para un salto topológico:
+    /// - Si el componente es un puente en serie (fusible, bobina, o resistor de paso/pull-up desde un riel de potencia),
+    ///   el voltaje esperado a medir es el del riel fuente (fromNet) y NO el nombre de una sub-red periférica deshabilitada.
+    /// </summary>
+    public double ResolveDynamicHopVoltage(string toNet, string fromNet, string? throughComponentId = null)
+    {
+        var fromResolved = _voltageResolver.Resolve(fromNet);
+
+        if (!string.IsNullOrWhiteSpace(throughComponentId))
+        {
+            var comp = _graph.GetComponentDetails(throughComponentId);
+            if (comp != null && fromResolved.Voltage is > 0 &&
+                (NetVoltageResolver.IsLowImpedanceBridge(comp) || comp.Category == "Resistor"))
+            {
+                return fromResolved.Voltage.Value;
+            }
+        }
+
+        var toResolved = _voltageResolver.Resolve(toNet);
+        if (toResolved.Voltage is > 0)
+            return toResolved.Voltage.Value;
+
+        if (fromResolved.Voltage is > 0)
+            return fromResolved.Voltage.Value;
+
+        return 0.0;
+    }
+
+    private List<RawStep> BuildDynamicGraphSequence(string startNet)
     {
         var list = new List<RawStep>();
-        var matchedNets = _graph.SearchNetNames(query, 5);
-        string startNet = matchedNets.FirstOrDefault() ?? "PPBUS_G3H";
-        double nomV = CircuitSimulator.InferNominalVoltage(startNet);
+        double nomV = ResolveDynamicHopVoltage(startNet, startNet);
 
-        var hops = _graph.GetUpstreamPath(null, startNet, maxDepth: 3).Take(6).ToList();
-        if (hops.Count == 0)
+        // Filtrar saltos por dominio funcional para no mezclar puertos periféricos (FireWire, Thunderbolt, Audio, LCD)
+        // cuando se analiza un riel de potencia principal.
+        var allHops = _graph.GetUpstreamPath(null, startNet, maxDepth: 3);
+        var filteredHops = FilterHopsByFunctionalDomain(startNet, allHops).Take(6).ToList();
+
+        if (filteredHops.Count == 0)
         {
-            var comps = _graph.GetComponentsOnNet(startNet).Take(5).ToList();
+            var comps = _graph.GetComponentsOnNet(startNet).Where(c => !c.IsNoStuff).Take(5).ToList();
             int idx = 1;
             foreach (var c in comps)
             {
-                list.Add(new RawStep(c.ComponentId, $"Nodo {idx} en {startNet}", startNet, startNet, nomV, $"Pines de {c.ComponentId}",
+                list.Add(new RawStep(
+                    c.ComponentId,
+                    $"Nodo {idx} en {startNet}",
+                    startNet,
+                    startNet,
+                    nomV,
+                    $"Pines de {c.ComponentId}",
                     $"Componente {c.Category} conectado a {startNet} en cuadrante {c.Quadrant}.",
                     $"Verificar continuidad e impedancia en {c.ComponentId}.",
                     DataSources.Inferred));
@@ -264,11 +433,16 @@ public class CircuitMazeDebugger
         }
 
         int step = 1;
-        foreach (var h in hops)
+        foreach (var h in filteredHops)
         {
-            double v = CircuitSimulator.InferNominalVoltage(h.ToNet);
-            list.Add(new RawStep(h.ThroughComponentId, $"{step}. Puente {h.ComponentCategory} ({h.ThroughComponentId})",
-                h.FromNet, h.ToNet, v, $"Medir en {h.ThroughComponentId}",
+            double v = ResolveDynamicHopVoltage(h.ToNet, h.FromNet, h.ThroughComponentId);
+            list.Add(new RawStep(
+                h.ThroughComponentId,
+                $"{step}. Puente {h.ComponentCategory} ({h.ThroughComponentId})",
+                h.FromNet,
+                h.ToNet,
+                v,
+                $"Medir en {h.ThroughComponentId}",
                 $"Conecta la red {h.FromNet} hacia {h.ToNet} en el cuadrante {h.Quadrant}.",
                 $"Si hay tensión en {h.FromNet} pero no en {h.ToNet}, {h.ThroughComponentId} está abierto o {h.ToNet} está en corto.",
                 DataSources.Inferred));
@@ -276,5 +450,70 @@ public class CircuitMazeDebugger
         }
 
         return list;
+    }
+
+    private List<UpstreamHopDto> FilterHopsByFunctionalDomain(string rootNet, List<UpstreamHopDto> hops)
+    {
+        if (hops.Count == 0) return hops;
+
+        string upperRoot = rootNet.ToUpperInvariant();
+        bool rootIsPeripheral = PeripheralDomainMarkers.Any(m => upperRoot.Contains(m, StringComparison.OrdinalIgnoreCase));
+        bool rootIsPowerRail = upperRoot.StartsWith("PP", StringComparison.OrdinalIgnoreCase);
+
+        var seenComponents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var domainFiltered = new List<UpstreamHopDto>();
+
+        foreach (var hop in hops)
+        {
+            var comp = _graph.GetComponentDetails(hop.ThroughComponentId);
+            if (comp is { IsNoStuff: true }) continue;
+
+            if (!rootIsPeripheral)
+            {
+                // Si el riel objetivo es una fuente principal (PPBUS_G3H, PP5V_S3, PP3V3_S5, PPVCORE_S0_CPU, etc.),
+                // excluir derivaciones a puertos secundarios (Thunderbolt T29, FireWire FW, Backlight, ODD, Audio).
+                bool targetIsPeripheral = PeripheralDomainMarkers.Any(m =>
+                    hop.ToNet.Contains(m, StringComparison.OrdinalIgnoreCase) ||
+                    hop.FromNet.Contains(m, StringComparison.OrdinalIgnoreCase));
+
+                if (targetIsPeripheral) continue;
+
+                // Excluir lazos Kelvin de sensado de corriente diferencial (ej. CPUIMVP_ISNS1_P/N en R7510/R7520)
+                // para evitar bucles repetitivos sobre resistencias shunt en lugar de avanzar a las bobinas L7510/L7520.
+                if (rootIsPowerRail && SenseFeedbackMarkers.Any(m =>
+                        hop.ToNet.Contains(m, StringComparison.OrdinalIgnoreCase) ||
+                        hop.FromNet.Contains(m, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                // En PPBUS_G3H, excluir divisores resistivos de alta impedancia (> 10 Ω) hacia ramas secundarias
+                if (upperRoot.StartsWith("PPBUS", StringComparison.OrdinalIgnoreCase) && comp is { Category: "Resistor" })
+                {
+                    double? ohms = NetVoltageResolver.ParseOhms(comp.SchematicValue);
+                    if (ohms is > 10.0) continue;
+                }
+            }
+
+            // Evitar repetir el mismo componente pasivo múltiples veces en el laberinto
+            if (!seenComponents.Add(hop.ThroughComponentId))
+                continue;
+
+            domainFiltered.Add(hop);
+        }
+
+        if (domainFiltered.Count == 0)
+            return hops.DistinctBy(h => h.ThroughComponentId, StringComparer.OrdinalIgnoreCase).ToList();
+
+        // Priorizar fusibles y bobinas principales de potencia sobre resistencias de sensado cuando se analiza un riel PP...
+        if (rootIsPowerRail)
+        {
+            return domainFiltered
+                .OrderByDescending(h => h.ComponentCategory is "Fuse" or "Inductor/Coil")
+                .ThenBy(h => h.Step)
+                .ToList();
+        }
+
+        return domainFiltered;
     }
 }

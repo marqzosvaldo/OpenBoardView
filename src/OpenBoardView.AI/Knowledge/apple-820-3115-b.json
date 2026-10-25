@@ -5,6 +5,7 @@
   "flows": [
     {
       "id": "backlight",
+      "targetNet": "PPVOUT_SW_LCDBKLT",
       "title": "Laberinto de Backlight (Retroiluminación LCD)",
       "symptom": "La laptop enciende y da imagen al fondo, pero la pantalla está oscura (sin voltaje en LEDs).",
       "keywords": [ "backlight", "brillo", "imagen", "pantalla", "lcd", "f9700", "u9701" ],
@@ -61,6 +62,7 @@
     },
     {
       "id": "magsafe-green-light",
+      "targetNet": "PP3V42_G3H",
       "title": "Laberinto One-Wire & Luz Verde MagSafe (PP3V42_G3H)",
       "symptom": "El cargador MagSafe no enciende luz verde/naranja y el SMC no despierta.",
       "keywords": [ "magsafe", "verde", "3v42", "onewire", "u6990", "u6900" ],
@@ -117,9 +119,10 @@
     },
     {
       "id": "charging-ppbus",
+      "targetNet": "PPBUS_G3H",
       "title": "Laberinto de Carga y Generación de PPBUS_G3H (No Carga / No Enciende)",
       "symptom": "Seguimiento paso a paso desde el conector MagSafe (16.5V), pasando por U7000 (ISL6259) y F7040 hasta la batería.",
-      "keywords": [ "carga", "bateria", "batería", "enciende", "ppbus", "u7000", "f7040" ],
+      "keywords": [ "carga", "bateria", "batería", "enciende", "ppbus", "ppbus_g3h", "u7000", "f7040", "r7020", "l7030" ],
       "steps": [
         {
           "component": "J6900", "stage": "1. Entrada DC-In (Conector MagSafe)",
@@ -141,7 +144,7 @@
           "component": "U6990", "stage": "3. Regulador Siempre-Activo 3.42V (G3Hot)",
           "inputNet": "PPDCIN_G3H", "outputNet": "PP3V42_G3H",
           "expectedVoltage": 3.42, "voltageSource": "curated",
-          "pinToMeasure": "Pin 4 (VIN) y Bobina L6995 (3.42V)",
+          "pinToMeasure": "Pin 4 (VIN = 16.5V) y Bobina L6995 (3.42V)",
           "howItWorks": "Convierte los 16.5V del cargador en 3.42V para alimentar al SMC (U4900) y al circuito de luz verde.",
           "failDiagnosis": "Sin 3.42V el SMC está muerto y nunca habrá carga ni luz en MagSafe. Revisar D6990, R6990, U6990 o corto en PP3V42_G3H."
         },
@@ -149,33 +152,33 @@
           "component": "R7005", "stage": "4. Alimentación VCC al Charger IC (ISL6259)",
           "inputNet": "PPDCIN_G3H", "outputNet": "PPCHGR_DCIN",
           "expectedVoltage": 16.5, "voltageSource": "curated",
-          "pinToMeasure": "Resistencia R7005 (20 Ω) hacia Pin 2 de U7000",
-          "howItWorks": "Alimenta el pin DCIN (Pin 2) del integrado cargador U7000 a través de la resistencia fusible R7005.",
+          "pinToMeasure": "Resistencia R7005 (20 Ω) / Pin 19 (DCIN) de U7000",
+          "howItWorks": "Verificar alimentación del pin DCIN del ISL6259 (U7000) a través de la resistencia fusible R7005 (20 Ω).",
           "failDiagnosis": "R7005 abierta o desvalorizada (suele quemarse cuando C7005 o U7000 entran en corto)."
         },
         {
           "component": "U7000", "stage": "5. Detección de Cargador (ACIN & SMC_BC_ACOK)",
           "inputNet": "CHGR_ACIN", "outputNet": "SMC_BC_ACOK",
           "expectedVoltage": 3.3, "voltageSource": "curated",
-          "pinToMeasure": "Pin 3 (ACIN > 3.9V) y Pin 14 (ACOK = 3.3V)",
-          "howItWorks": "U7000 verifica el divisor resistivo R7010/R7011 en ACIN; si es ~4V, levanta SMC_BC_ACOK para encender el MagSafe y avisar al SMC.",
+          "pinToMeasure": "Pin 2 (ACIN > 3.2V) y Pin 14 (ACOK = 3.3V)",
+          "howItWorks": "U7000 valida el cargador mediante el divisor resistivo R7010/R7011 en ACIN y emite SMC_BC_ACOK hacia el SMC.",
           "failDiagnosis": "Divisor R7010/R7011 alterado o U7000 dañado. Sin ACOK no se habilita el circuito de carga."
         },
         {
-          "component": "R7020", "stage": "6. Sensado de Corriente de Entrada (CSI_P / CSI_N)",
+          "component": "R7020", "stage": "6. Sensado de Corriente de Entrada (CSIP / CSIN)",
           "inputNet": "PPDCIN_G3H_INRUSH", "outputNet": "PPDCIN_G3H_CHGR",
           "expectedVoltage": 16.5, "voltageSource": "curated",
-          "pinToMeasure": "Pines 27 y 28 de U7000 (lazo R7020 0.02Ω)",
-          "howItWorks": "U7000 mide cuánta corriente consume la placa del cargador mediante las resistencias R7021/R7022 hacia los pines 27/28.",
-          "failDiagnosis": "Si R7021 o R7022 se abren, U7000 cree que hay sobrecorriente y apaga inmediatamente la generación de PPBUS_G3H."
+          "pinToMeasure": "Pines 17 y 18 de U7000 (Lazo R7020 0.02 Ω)",
+          "howItWorks": "Monitoreo de corriente consumida por la placa desde el cargador mediante R7020 (0.02 Ω) y R7021/R7022 hacia los pines 17 (CHGR_CSIP) y 18 (CHGR_CSIN) de U7000.",
+          "failDiagnosis": "Si R7021 o R7022 se abren en los pines 17/18, U7000 cree que hay sobrecorriente de entrada y apaga inmediatamente la generación de PPBUS_G3H."
         },
         {
           "component": "L7030", "stage": "7. Bobina Buck Converter de Carga",
           "inputNet": "CHGR_PHASE", "outputNet": "PPVBAT_G3H_CHGR_REG",
           "expectedVoltage": 12.56, "voltageSource": "curated",
           "pinToMeasure": "Bobina L7030 y Resistencia Shunt R7050",
-          "howItWorks": "Los MOSFETs Q7030/Q7035 conmutados por U7000 reducen los 16.5V a 12.56V regulados (8.4V si el SMC no está comunicando).",
-          "failDiagnosis": "Si aquí hay 0V o <3V: revisar Q7030/Q7035 en corto, R7051/R7052 (lazo CSOP/CSON pines 17/18 de U7000) o corto después de F7040."
+          "howItWorks": "Conmutación Buck de alta potencia desde los MOSFETs Q7030/Q7035 y sensado de corriente de batería en R7050 (pines 27 CHGR_CSON y 28 CHGR_CSOP de U7000).",
+          "failDiagnosis": "Si aquí hay 0V o <3V: revisar Q7030/Q7035 en corto, R7051/R7052 (lazo CSON/CSOP pines 27/28 de U7000) o corto después de F7040."
         },
         {
           "component": "F7040", "stage": "8. Fusible Maestro del Sistema (PPBUS_G3H)",
@@ -192,6 +195,168 @@
           "pinToMeasure": "Conector de Batería J6950 (Pines 1-3 y SCL/SDA Pines 4-6)",
           "howItWorks": "El SMC conversa con la batería por SMBus (R5280/R5281); si la reconoce, U7000 abre Q7055 para inyectar corriente de carga.",
           "failDiagnosis": "Si PPBUS_G3H tiene 12.56V pero no carga: si mide 12.23V el SMC no lee la batería (revisar R5280/R5281, D6950 o ISL6259). Si mide 12.56V, probar otra batería o Q7055."
+        }
+      ]
+    },
+    {
+      "id": "pp5v-s3-zero-volts",
+      "targetNet": "PP5V_S3",
+      "title": "Árbol de Decisión PP5V_S3 = 0V (Corto a Tierra vs. Falta de Habilitación Q7221 / PM_SLP_S4_L)",
+      "symptom": "La línea PP5V_S3 mide 0V: bifurcación paso a paso entre cortocircuito en el riel (Rama 1: C6213 / filtrado) y bloqueo de habilitación ENTRIP por Q7221 y PCH U1800 (Rama 2: PM_SLP_S4_L).",
+      "keywords": [ "pp5v_s3", "5v_s3", "p5vs3", "q7221", "pm_slp_s4_l", "u7200", "l7260", "c6213", "p5vs3_en_l", "p5vs3_entrip" ],
+      "steps": [
+        {
+          "component": "L7260",
+          "stage": "1. Bifurcación Inicial en Bobina de 5V (Óhmetro en L7260)",
+          "inputNet": "P5VS3_LL",
+          "outputNet": "PP5V_S3",
+          "expectedVoltage": 5.0,
+          "voltageSource": "curated",
+          "measurementMode": "resistance",
+          "expectedReading": "> 1 kΩ normal | < 5 Ω corto a GND",
+          "branch": "0 · Bifurcación Inicial (Óhmetro)",
+          "pinToMeasure": "Pin 2 de L7260 (riel PP5V_S3) respecto a GND en modo resistencia/diodo (sin energía)",
+          "howItWorks": "Antes de buscar habilitaciones, mide la resistencia a tierra en L7260 (Cuadrante Q4). Si la impedancia cayó a ~0.4 Ω hay un corto físico en PP5V_S3 (Rama 1); si es alta (> 1 kΩ), el riel está libre de corto pero el regulador U7200 está deshabilitado (Rama 2).",
+          "failDiagnosis": "Si mide ~0.4 Ω a GND: ir al Paso 2 (Rama 1: corto en el riel, revisar C6213 en Audio). Si mide > 1 kΩ: descartar corto en PP5V_S3 y avanzar al Paso 3 (Rama 2: habilitación Q7221 / PM_SLP_S4_L)."
+        },
+        {
+          "component": "C6213",
+          "stage": "2. [Rama 1: Corto 0.4 Ω] Capacitor de Filtrado en Audio (C6213)",
+          "inputNet": "PP5V_S3",
+          "outputNet": "GND_AUDIO_HP_AMP",
+          "expectedVoltage": 5.0,
+          "voltageSource": "curated",
+          "branch": "Rama 1 · Corto en Riel (0.4 Ω)",
+          "pinToMeasure": "C6213 (10µF 10V junto a U6201 en Cuadrante Q3) y C7290/C7291 (junto a L7260 en Cuadrante Q4)",
+          "howItWorks": "Cuando PP5V_S3 presenta ~0.4 Ω a GND, la corriente de inyección (1V–1.5V) se drena por un capacitor cerámico en paralelo a tierra. En la 820-3115-B, C6213 (alimentación del códec de audio U6201, Pág. 57) es una causa recurrente de corto total en PP5V_S3.",
+          "failDiagnosis": "C6213 en cortocircuito a tierra (o C7290/C7291/Q7261). Al desoldar C6213 la resistencia en L7260 sube a kilo-ohmios y reaparecen los 5.0V en PP5V_S3."
+        },
+        {
+          "component": "U7200",
+          "stage": "3. [Rama 2: Impedancia OK] Alimentación VIN y LDO VREG5 de U7200 (TPS51125)",
+          "inputNet": "PPBUS_S5_HS_OTHER_ISNS",
+          "outputNet": "PP5V_S5",
+          "expectedVoltage": 5.0,
+          "voltageSource": "curated",
+          "branch": "Rama 2 · Bloqueo de Habilitación / PCH",
+          "pinToMeasure": "Pin 16 (VIN = 12.56V vía R5410) y Pin 8 (VREG5 = PP5V_S5 = 5.0V) de U7200",
+          "howItWorks": "Con impedancia normal en L7260, verificamos que el controlador TPS51125 (U7200, Pág. 66, Cuadrante Q4) reciba 12.56V en VIN desde PPBUS_S5_HS_OTHER_ISNS y genere su regulador lineal interno PP5V_S5 (5.0V) y PP3V3_S5 (3.3V en L7220).",
+          "failDiagnosis": "Si no hay 12.56V en Pin 16, revisar shunt R5410 (0.003 Ω). Si hay 12.56V pero no existen PP5V_S5 ni PP3V3_S5, revisar 5V3V3_REG_EN (Pin 13) o U7200 dañado."
+        },
+        {
+          "component": "Q7221",
+          "stage": "4. [Rama 2] Control de Habilitación P5VS3_ENTRIP en Q7221",
+          "inputNet": "P5VS3_EN_L",
+          "outputNet": "P5VS3_ENTRIP",
+          "expectedVoltage": 0.75,
+          "voltageSource": "curated",
+          "branch": "Rama 2 · Bloqueo de Habilitación / PCH",
+          "pinToMeasure": "Gate Pin 2 (P5VS3_EN_L: debe medir 0V en encendido) y Drain Pin 6 (P5VS3_ENTRIP: ~0.75V habilitado) de Q7221",
+          "howItWorks": "El canal de 5V de U7200 se habilita por su Pin 1 (P5VS3_ENTRIP) a través de R7271 (115kΩ). Si el Gate de Q7221 (P5VS3_EN_L) tiene nivel alto (~3.4V), el MOSFET Q7221 conduce y manda P5VS3_ENTRIP a tierra (0V), manteniendo PP5V_S3 apagado.",
+          "failDiagnosis": "Si mides ~3.4V en Gate de Q7221 (P5VS3_EN_L), Q7221 está bloqueando legítimamente a U7200 porque no ha llegado la orden de encendido. (Prueba de taller: aislar Q7221 fuerza el encendido de PP5V_S3 para confirmar que U7200/Q7260/L7260 funcionan)."
+        },
+        {
+          "component": "Q7911",
+          "stage": "5. [Rama 2] Inversor de Habilitación S3 (Q7911 y Pull-Up R7913)",
+          "inputNet": "PM_SLP_S4_L",
+          "outputNet": "P5VS3_EN_L",
+          "expectedVoltage": 0.0,
+          "voltageSource": "curated",
+          "branch": "Rama 2 · Bloqueo de Habilitación / PCH",
+          "pinToMeasure": "Gate Pin 1 (PM_SLP_S4_L = 3.3V esperado) y Drain Pin 3 (P5VS3_EN_L = 0V esperado) de Q7911",
+          "howItWorks": "En la Pág. 73 (Cuadrante Q4), la resistencia R7913 (68kΩ a PP3V42_G3H) mantiene P5VS3_EN_L en ~3.42V mientras el equipo está apagado. Cuando llega PM_SLP_S4_L (3.3V) al Gate de Q7911, este satura a tierra y baja P5VS3_EN_L a 0V.",
+          "failDiagnosis": "Si PM_SLP_S4_L es 3.3V pero P5VS3_EN_L sigue en 3.4V, Q7911 está abierto. Si PM_SLP_S4_L mide 0V, el problema viene del PCH U1800 (pasar al Paso 6)."
+        },
+        {
+          "component": "U1800",
+          "stage": "6. [Rama 2] Generación de PM_SLP_S4_L en el PCH (U1800)",
+          "inputNet": "PPVRTC_G3H",
+          "outputNet": "PM_SLP_S4_L",
+          "expectedVoltage": 3.3,
+          "voltageSource": "curated",
+          "branch": "Rama 2 · Bloqueo de Habilitación / PCH",
+          "pinToMeasure": "Señal PM_SLP_S4_L (en R7912 / R1921) y temperatura en reposo de U1800 (Cuadrante Q1)",
+          "howItWorks": "El PCH U1800 libera PM_SLP_S4_L (3.3V) para despertar las fuentes S3 una vez que cuenta con PPVRTC_G3H (3.3V), reloj de 32.768 kHz (SYSCLK_CLK32K_RTC), PP3V3_S5, PP3V3_SUS, PM_RSMRST_L y el pulso PM_PWRBTN_L del SMC.",
+          "failDiagnosis": "Si todas las condiciones S5/RTC están presentes pero PM_SLP_S4_L permanece en 0V (especialmente si el PCH U1800 se calienta a ~50°C en estado S5), el PCH U1800 está en corto interno o dañado."
+        }
+      ]
+    },
+    {
+      "id": "ppvcore-s0-cpu",
+      "targetNet": "PPVCORE_S0_CPU",
+      "title": "Diagnóstico Alimentación VCORE del Procesador (PPVCORE_S0_CPU = 0V)",
+      "symptom": "La línea PPVCORE_S0_CPU mide 0V: secuencia de verificación desde impedancia en bobinas L7510/L7520, señal global ALL_SYS_PWRGD (R7402 / Q7950), alimentación VDD/VIN en U7400 (ISL95831) y habilitación CPU_VR_EN.",
+      "keywords": [ "ppvcore_s0_cpu", "ppvcore", "vcore", "cpu_vcore", "u7400", "isl95831", "l7510", "l7520", "all_sys_pwrgd", "cpu_vr_en", "cpuimvp_vr_on", "q7950", "r7402" ],
+      "steps": [
+        {
+          "component": "L7510",
+          "stage": "1. Impedancia a Tierra en Bobinas de CPU",
+          "inputNet": "PPVCORE_S0_CPU_PH1",
+          "outputNet": "PPVCORE_S0_CPU",
+          "expectedVoltage": 1.15,
+          "voltageSource": "curated",
+          "measurementMode": "resistance",
+          "expectedReading": "5 Ω – 15 Ω (Normal CPU) | < 1 Ω (Corto)",
+          "branch": "0 · Impedancia Inicial VCORE (Óhmetro)",
+          "pinToMeasure": "Pin 2 de L7510 / L7520 respecto a GND",
+          "howItWorks": "Mide resistencia en escala baja. Importante: la CPU tiene impedancia baja por naturaleza (5-15Ω). No confundir con corto directo (< 1Ω).",
+          "failDiagnosis": "Si mide < 1 Ω hay un cortocircuito directo en PPVCORE_S0_CPU (MOSFETs de fase Q7510/Q7520 o procesador U1000). Si mide 5 Ω – 15 Ω, la impedancia es normal: pasar al Paso 2."
+        },
+        {
+          "component": "R7402",
+          "stage": "2. Señal Global Power Good (ALL_SYS_PWRGD)",
+          "inputNet": "CPUIMVP_TONA",
+          "outputNet": "ALL_SYS_PWRGD",
+          "expectedVoltage": 3.3,
+          "voltageSource": "curated",
+          "measurementMode": "voltage",
+          "expectedReading": "3.30 V DC",
+          "branch": "1 · Cadena ALL_SYS_PWRGD & TON",
+          "pinToMeasure": "Resistencia R7402 / Pin 1 de Q7950",
+          "howItWorks": "Verifica que todas las fuentes secundarias (3.3V, 5V, 1.5V RAM, 1.05V) reporten Power Good unificado en ALL_SYS_PWRGD y que R7402 polarice TON de U7400.",
+          "failDiagnosis": "Si ALL_SYS_PWRGD mide 0V en Q7950, alguna fuente S0 secundaria está caída y bloquea el encendido del regulador de CPU."
+        },
+        {
+          "component": "U7400",
+          "stage": "3. Alimentación VDD y VIN del PWM U7400 (ISL95831)",
+          "inputNet": "PPBUS_S5_HS_COMPUTING_ISNS",
+          "outputNet": "PP5V_S0",
+          "expectedVoltage": 5.0,
+          "voltageSource": "curated",
+          "measurementMode": "voltage",
+          "expectedReading": "5.00V VDD / 12.56V VIN",
+          "branch": "2 · Alimentación y Control U7400",
+          "pinToMeasure": "Pin 22 (VDD = 5.0V PP5V_S0) y Pin 23 (VIN = 12.56V PPBUS_S0_VSENSE)",
+          "howItWorks": "Verifica que el integrado regulador de CPU reciba su alimentación digital (Pin 22) y su voltaje de alta potencia (Pin 23 vía R7402).",
+          "failDiagnosis": "Sin 5.0V en Pin 22 (PP5V_S0) o sin 12.56V de referencia en Pin 23 (R7402), el controlador U7400 (ISL95831) no puede operar."
+        },
+        {
+          "component": "U7400",
+          "stage": "4. Señal de Habilitación CPU_VR_EN",
+          "inputNet": "ALL_SYS_PWRGD",
+          "outputNet": "CPUIMVP_VR_ON",
+          "expectedVoltage": 3.3,
+          "voltageSource": "curated",
+          "measurementMode": "voltage",
+          "expectedReading": "3.30 V DC",
+          "branch": "2 · Alimentación y Control U7400",
+          "pinToMeasure": "Pin 47 de U7400 (CPU_VR_EN)",
+          "howItWorks": "Comprueba la orden de encendido enviada a U7400 una vez que la lógica de PWRGD y el PCH autorizan el inicio de la CPU.",
+          "failDiagnosis": "Si ALL_SYS_PWRGD es 3.3V pero el Pin 47 de U7400 mide 0V, revisar la resistencia R7974 abierta."
+        },
+        {
+          "component": "L7510",
+          "stage": "5. Conmutación y Salida VCORE de CPU",
+          "inputNet": "PPVCORE_S0_CPU_PH1",
+          "outputNet": "PPVCORE_S0_CPU",
+          "expectedVoltage": 1.15,
+          "voltageSource": "curated",
+          "measurementMode": "voltage",
+          "expectedReading": "0.90V – 1.15V DC",
+          "branch": "3 · Salida de Fase VCORE",
+          "pinToMeasure": "Bobinas L7510 y L7520 (Salida PPVCORE_S0_CPU)",
+          "howItWorks": "Salida de potencia hacia el socket de la CPU. Si los pasos 1-4 son correctos pero VCORE es 0V, reemplazar U7400 o drivers de fase.",
+          "failDiagnosis": "Si los pasos 1-4 son correctos pero PPVCORE_S0_CPU sigue en 0V, reemplazar U7400 (ISL95831) o revisar MOSFETs de fase Q7510/Q7520."
         }
       ]
     }

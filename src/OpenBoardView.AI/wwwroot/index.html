@@ -359,6 +359,7 @@
     <div class="brand">
       <span>OpenBoardView AI</span>
       <span class="badge">.NET 10 + Simulador DC & Térmico</span>
+      <span id="activeSymptomBadge" class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.4);">Síntoma: PPBUS_G3H (9 pasos)</span>
       <span id="boardTitle" style="color: var(--text-muted); font-weight: 400; font-size: 12px;">Cargando...</span>
     </div>
     <div class="toolbar">
@@ -421,7 +422,7 @@
           </div>
           <div class="psu-actions">
             <button class="btn-sim-fire" onclick="triggerManualSimulation(false)">🔥 Simular Corto + Flujo</button>
-            <button class="btn-lift" id="btnLiftF7040" onclick="toggleLiftFuse('F7040')">🔧 Levantar F7040</button>
+            <button class="btn-lift" id="btnLiftF7040" onclick="toggleLiftFuse(activeIsolationCompId)">🔧 Levantar F7040</button>
             <button onclick="clearSimulation()">Limpiar</button>
           </div>
         </div>
@@ -435,18 +436,22 @@
       <!-- NUEVA FUNCIONALIDAD ADITIVA: Circuit Step Debugger (Modo Laberinto Paso a Paso) -->
       <div class="maze-debugger" id="mazeDebuggerPanel">
         <div class="maze-header">
-          <span>🧭 Circuit Step Debugger (Laberinto)</span>
+          <span id="mazeHeaderTitle">🧭 Stepper: <span id="symptomLabel" style="color:#4ade80;">PPBUS_G3H</span></span>
           <span id="mazeStepCounter" style="color:#fef08a;">LISTO</span>
         </div>
         <div class="psu-row" style="margin-bottom:8px;">
           <select id="mazePresetSelect" onchange="startMazeDebugger(this.value, 1, null)"
                   style="flex:1; background:#090d16; color:#38bdf8; font-weight:600; border:1px solid #334155; padding:5px 8px; border-radius:4px; font-size:12px;">
-            <option value="no carga">🔋 Síntoma: Mi laptop NO carga / PPBUS_G3H (9 pasos)</option>
-            <option value="sin luz magsafe">💡 Síntoma: Sin Luz Verde en MagSafe / 3V42 (6 pasos)</option>
-            <option value="sin backlight">🖥 Síntoma: Pantalla Oscura / Sin Backlight (6 pasos)</option>
+            <option value="no carga" data-net="PPBUS_G3H">🔋 Síntoma: PPBUS_G3H Ausente / No Carga (9 pasos)</option>
+            <option value="sin luz magsafe" data-net="PP3V42_G3H">💡 Síntoma: PP3V42_G3H Ausente / Sin Luz MagSafe (6 pasos)</option>
+            <option value="sin backlight" data-net="PPVOUT_SW_LCDBKLT">🖥 Síntoma: PPVOUT_SW_LCDBKLT Ausente / Sin Backlight (6 pasos)</option>
+            <option value="pp5v_s3" data-net="PP5V_S3">⚡ Síntoma: PP5V_S3 Ausente / Árbol de Decisión (6 pasos)</option>
+            <option value="ppvcore_s0_cpu" data-net="PPVCORE_S0_CPU">🧠 Síntoma: PPVCORE_S0_CPU Ausente / VCORE CPU (5 pasos)</option>
           </select>
           <button onclick="startMazeDebugger(document.getElementById('mazePresetSelect').value, 1, null)">Iniciar</button>
         </div>
+
+        <div id="mazeContextualActions" style="display:flex; gap:5px; flex-wrap:wrap; margin-bottom:8px;"></div>
 
         <div class="maze-step-box" id="mazeStepDetails">
           Selecciona un síntoma y presiona <b>Iniciar</b> o <b>Siguiente (F10)</b> para recorrer el circuito paso a paso como un laberinto siguiendo la línea de voltaje.
@@ -478,11 +483,12 @@
         </div>
       </div>
 
-      <div class="quick-prompts">
-        <button onclick="sendQuickPrompt('Mi laptop no carga. Inicia el debugger paso a paso como laberinto para rastrear la línea desde el MagSafe hasta la batería.')">🧭 Debugger: No Carga</button>
-        <button onclick="sendQuickPrompt('Simula un corto a tierra en PPBUS_G3H en el capacitor C7513 inyectando 1.5V a 2.5A y muéstrame el flujo de corriente y la cámara térmica.')">🔥 Simular Corto PPBUS_G3H</button>
-        <button onclick="sendQuickPrompt('Simula qué pasa en PPBUS_G3H si levanto el fusible F7040 cuando C7513 está en corto.')">🔧 Simular Levantar F7040</button>
-        <button onclick="sendQuickPrompt('No tengo luz verde en el MagSafe. Inicia el debugger paso a paso del circuito One-Wire y 3V42.')">💡 Debugger: MagSafe</button>
+      <div class="quick-prompts" id="quickPromptsBar">
+        <button onclick="sendQuickPrompt('Tengo una MacBook Pro 820-3115 con PP5V_S3 en 0V. Guíame con un árbol de decisión paso a paso: ¿qué debo medir primero con el multímetro para determinar si es un corto a tierra en el riel o una falta de habilitación de Q7221 por señales del PCH (PM_SLP_S4_L)?')">⚡ Árbol PP5V_S3 (0V)</button>
+        <button onclick="sendQuickPrompt('Tengo PPVCORE_S0_CPU en 0V en la placa 820-3115-B. Inicia el debugger paso a paso para medir impedancia en L7510/L7520, ALL_SYS_PWRGD y habilitación CPU_VR_EN en U7400.')">🧠 Diagnóstico PPVCORE_S0_CPU</button>
+        <button onclick="sendQuickPrompt('Mi laptop no carga. Inicia el debugger paso a paso como laberinto para rastrear la línea PPBUS_G3H desde el MagSafe hasta la batería.')">🔋 Secuencia PPBUS_G3H</button>
+        <button onclick="sendQuickPrompt('Simula un corto a tierra en PP5V_S3 en el capacitor C6213 inyectando 1.0V a 2.0A y muéstrame el flujo de corriente y la cámara térmica.')">🔥 Corto C6213 (PP5V_S3)</button>
+        <button onclick="sendQuickPrompt('No tengo luz verde en el MagSafe. Inicia el debugger paso a paso del circuito One-Wire y PP3V42_G3H.')">💡 Debugger: MagSafe 3V42</button>
       </div>
 
       <div class="chat-input-bar">
@@ -504,6 +510,7 @@
     let mazeAutoPlayTimer = null;
     let liftedComponents = new Set();
     let selectedFaultCompId = null;
+    let activeIsolationCompId = 'F7040';
     let animPhase = 0;
 
     let cam = { x: 0, y: 0, zoom: 0.14 };
@@ -620,15 +627,16 @@
     }
 
     async function toggleLiftFuse(compId) {
-      const id = compId.toUpperCase();
+      const id = (compId || activeIsolationCompId || 'F7040').toUpperCase();
+      activeIsolationCompId = id;
       if (liftedComponents.has(id)) {
         liftedComponents.delete(id);
       } else {
         liftedComponents.add(id);
       }
       const btn = document.getElementById('btnLiftF7040');
-      if (btn && id === 'F7040') {
-        btn.textContent = liftedComponents.has('F7040') ? '✅ F7040 Levantado (Resoldar)' : '🔧 Levantar F7040';
+      if (btn) {
+        btn.textContent = liftedComponents.has(id) ? `✅ ${id} Levantado (Resoldar)` : `🔧 Levantar ${id}`;
       }
       await triggerManualSimulation(true);
     }
@@ -637,6 +645,7 @@
       selectedFaultCompId = compId;
       if (netName && netName !== 'GND') {
         document.getElementById('simNetSelect').value = netName;
+        onSimNetChanged(netName);
       }
       await triggerManualSimulation(true);
     }
@@ -648,6 +657,7 @@
       highlightedNet = null;
       liftedComponents.clear();
       selectedFaultCompId = null;
+      activeIsolationCompId = 'F7040';
       document.getElementById('btnLiftF7040').textContent = '🔧 Levantar F7040';
       document.getElementById('simStatusBadge').textContent = 'EN ESPERA';
       document.getElementById('simStatusBadge').style.color = '#94a3b8';
@@ -667,9 +677,100 @@
       applyMazeTrace(trace);
     }
 
-    function applyMazeTrace(trace) {
+    function jumpToMazeStep(stepNum) {
+      if (!activeMazeTrace || !activeMazeTrace.steps) return;
+      activeMazeTrace.blockedAtStepNumber = null;
+      activeMazeTrace.currentStepNumber = Math.min(Math.max(1, stepNum), activeMazeTrace.steps.length);
+      renderMazeStepUI();
+    }
+
+    function syncUiWithActiveNet(primaryNet, trace, intent) {
+      const net = (primaryNet || (trace && trace.targetNet) || (intent && intent.primary_net) || 'PPBUS_G3H').trim().toUpperCase();
+      const stepCount = (trace && trace.steps) ? trace.steps.length : 0;
+
+      // 1. Header Dinámico: symptomLabel, activeSymptomBadge y mazePresetSelect
+      const symptomLbl = document.getElementById('symptomLabel');
+      if (symptomLbl) {
+        symptomLbl.textContent = stepCount > 0 ? `${net} Ausente (${stepCount} pasos)` : net;
+      }
+      const headerBadge = document.getElementById('activeSymptomBadge');
+      if (headerBadge) {
+        headerBadge.textContent = stepCount > 0 ? `Síntoma: ${net} Ausente (${stepCount} pasos)` : `Red Activa: ${net}`;
+      }
+
+      const presetSelect = document.getElementById('mazePresetSelect');
+      if (presetSelect) {
+        const opts = Array.from(presetSelect.options);
+        const match = opts.find(o => o.dataset && o.dataset.net && o.dataset.net.toUpperCase() === net);
+        if (match) {
+          presetSelect.value = match.value;
+        } else {
+          let dynOpt = document.getElementById('dynMazePresetOpt');
+          if (!dynOpt) {
+            dynOpt = document.createElement('option');
+            dynOpt.id = 'dynMazePresetOpt';
+            presetSelect.appendChild(dynOpt);
+          }
+          dynOpt.value = net;
+          dynOpt.dataset.net = net;
+          dynOpt.textContent = `🧭 Síntoma: ${net} Ausente (${stepCount || '?'} pasos)`;
+          presetSelect.value = net;
+        }
+      }
+
+      // 2. DC Injection Panel: sincronizar línea activa, tensión segura y puente de aislamiento
+      const simNetEl = document.getElementById('simNetSelect');
+      if (simNetEl) {
+        simNetEl.value = net;
+        onSimNetChanged(net);
+      }
+
+      const rngInjV = document.getElementById('rngInjV');
+      const lblInjV = document.getElementById('lblInjV');
+      if (rngInjV && lblInjV) {
+        let safeV = 1.5;
+        if (net.includes('VCORE') || net.includes('1V05') || net.includes('0V')) safeV = 0.8;
+        else if (net.includes('5V') || net.includes('3V')) safeV = 1.0;
+        rngInjV.value = safeV;
+        lblInjV.textContent = `${safeV.toFixed(1)} V`;
+      }
+
+      let isoComp = 'F7040';
+      if (net.includes('VCORE')) isoComp = 'L7510';
+      else if (net.includes('5V_S3')) isoComp = 'L7260';
+      else if (net.includes('LCDBKLT')) isoComp = 'F9700';
+      else if (net.includes('3V42')) isoComp = 'L6995';
+      else if (trace && trace.steps && trace.steps.length > 0) {
+        const bridgeStep = trace.steps.find(s => /^[FLR]/i.test(s.componentId));
+        if (bridgeStep) isoComp = bridgeStep.componentId;
+      }
+      activeIsolationCompId = isoComp.toUpperCase();
+      const btnLift = document.getElementById('btnLiftF7040');
+      if (btnLift) {
+        btnLift.textContent = liftedComponents.has(activeIsolationCompId)
+          ? `✅ ${activeIsolationCompId} Levantado (Resoldar)`
+          : `🔧 Levantar ${activeIsolationCompId}`;
+      }
+
+      // 3. Action Buttons contextuales dinámicos (ej. Medir Ω en L7510, Verificar ALL_SYS_PWRGD)
+      const ctxBar = document.getElementById('mazeContextualActions');
+      if (ctxBar && trace && trace.steps && trace.steps.length > 0) {
+        const actionBtns = trace.steps.slice(0, 5).map(s => {
+          const isRes = s.measurementMode === 'resistance';
+          const btnText = isRes
+            ? `📐 Medir Ω en ${s.componentId}`
+            : `⚡ Verificar ${s.outputNet} (${s.componentId})`;
+          return `<button style="font-size:10.5px; padding:3px 7px; background:rgba(56,189,248,0.12); border-color:#334155;" onclick="jumpToMazeStep(${s.stepNumber})">${btnText}</button>`;
+        });
+        ctxBar.innerHTML = actionBtns.join('');
+      }
+    }
+
+    function applyMazeTrace(trace, intent = null) {
       if (!trace || !trace.steps || trace.steps.length === 0) return;
       activeMazeTrace = trace;
+      const primaryNet = trace.targetNet || (intent && intent.primary_net) || (trace.steps[0] && trace.steps[0].outputNet) || 'PPBUS_G3H';
+      syncUiWithActiveNet(primaryNet, trace, intent);
       renderMazeStepUI();
     }
 
@@ -697,23 +798,39 @@
         ? `🛑 BLOQUEO PASO ${blockedStep}/${steps.length}`
         : `PASO ${currIdx} DE ${steps.length}`;
 
+      const isResistanceStep = step.measurementMode === 'resistance';
+      const expectedDisplay = step.expectedReading
+        ? step.expectedReading
+        : `${step.expectedVoltage.toFixed(2)} V`;
+      const branchBadgeHtml = step.branch
+        ? `<div style="margin-bottom:4px;"><span style="background:rgba(56,189,248,0.16); border:1px solid #38bdf8; color:#7dd3fc; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:700;">🌿 ${step.branch}</span></div>`
+        : '';
+      const sourceLabelHtml = step.dataSource === 'inferred'
+        ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.15); border:1px solid #f59e0b; border-radius:4px; color:#fde68a; font-size:10.5px;">⚠ <b>Voltaje estimado</b> a partir del nombre de la red (no leído del esquemático). Verifícalo en el PDF antes de concluir.</div>`
+        : step.dataSource === 'bridged'
+          ? `<div style="margin-top:4px; color:#38bdf8; font-size:10px;">🔗 Voltaje heredado de riel maestro aguas arriba (puente pasivo)</div>`
+          : `<div style="margin-top:4px; color:#64748b; font-size:10px;">📘 Dato verificado en esquemático PDF (${step.dataSource})</div>`;
+
       document.getElementById('mazeStepDetails').innerHTML = `
+        ${branchBadgeHtml}
         <div style="font-weight:700; color:${blockedStep === step.stepNumber ? '#ef4444' : '#38bdf8'}; margin-bottom:3px;">
           ${step.stageTitle}
         </div>
-        <div><b>Comp:</b> <code>${step.componentId}</code> (${step.quadrant} • ${step.side}) | <b>Esperado:</b> <b style="color:#4ade80">${step.expectedVoltage.toFixed(2)} V</b></div>
+        <div><b>Comp:</b> <code>${step.componentId}</code> (${step.quadrant} • ${step.side}) | <b>Esperado (${isResistanceStep ? 'Ω' : 'DC'}):</b> <b style="color:#4ade80">${expectedDisplay}</b></div>
         <div><b>Transición:</b> <span style="color:#94a3b8">${step.inputNet}</span> ➔ <b style="color:#fef08a">${step.outputNet}</b></div>
         <div style="margin-top:4px; color:#cbd5e1;">🎯 <b>Medir:</b> ${step.pinToMeasure}</div>
         <div style="margin-top:4px; color:#94a3b8; font-size:11px;">💡 ${step.howItWorks}</div>
-        ${step.dataSource === 'inferred' ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.15); border:1px solid #f59e0b; border-radius:4px; color:#fde68a; font-size:10.5px;">⚠ <b>Voltaje estimado</b> a partir del nombre de la red (no leído del esquemático). Verifícalo en el PDF antes de concluir.</div>` : `<div style="margin-top:4px; color:#64748b; font-size:10px;">📘 Dato curado por experto (esquemático)</div>`}
+        ${sourceLabelHtml}
         ${step.componentFound === false ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:4px; color:#fecaca; font-size:10.5px;">⚠ <b>${step.componentId}</b> no existe en la placa cargada; la posición mostrada es aproximada.</div>` : ''}
         ${(activeMazeTrace.warnings && activeMazeTrace.warnings.length && step.stepNumber === 1) ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.12); border:1px solid #92400e; border-radius:4px; color:#fcd34d; font-size:10.5px;">ℹ ${activeMazeTrace.warnings[0]}</div>` : ''}
         ${blockedStep === step.stepNumber ? `<div style="margin-top:6px; padding:5px; background:rgba(239,68,68,0.18); border:1px solid #ef4444; border-radius:4px; color:#fecaca; font-size:11px;"><b>🛑 Diagnóstico de Bloqueo:</b> ${step.failDiagnosis}</div>` : ''}
       `;
 
-      document.getElementById('lcdVolt').textContent = `${blockedStep === step.stepNumber ? '0.00' : step.expectedVoltage.toFixed(2)} V`;
+      document.getElementById('lcdVolt').textContent = blockedStep === step.stepNumber
+        ? (isResistanceStep ? '0.4 Ω' : '0.00 V')
+        : (isResistanceStep ? (step.expectedReading || 'Ω') : `${step.expectedVoltage.toFixed(2)} V`);
       document.getElementById('lcdVolt').style.color = blockedStep === step.stepNumber ? '#ef4444' : '#22c55e';
-      focusOnComponent(step.componentId, step.outputNet, blockedStep === step.stepNumber ? `🛑 Falla en Paso ${step.stepNumber}: ${step.failDiagnosis}` : `🧭 Paso ${step.stepNumber}: Medir ${step.expectedVoltage.toFixed(2)}V en ${step.pinToMeasure}`);
+      focusOnComponent(step.componentId, step.outputNet, blockedStep === step.stepNumber ? `🛑 Falla en Paso ${step.stepNumber}: ${step.failDiagnosis}` : `🧭 Paso ${step.stepNumber}: Medir ${expectedDisplay} en ${step.pinToMeasure}`);
     }
 
     function mazeFirstStep() {
@@ -1114,7 +1231,10 @@
           ctx.fillText(step.stepNumber.toString(), pt.x - 3.5, pt.y + 4);
 
           if (isCurr || isBlocked) {
-            const label = `${isBlocked ? '🛑 0V BLOQUEO' : '🧭 PASO ' + step.stepNumber}: ${step.componentId} (${step.expectedVoltage.toFixed(2)}V en ${step.outputNet})`;
+            const valLabel = step.measurementMode === 'resistance' && step.expectedReading
+              ? step.expectedReading
+              : `${step.expectedVoltage.toFixed(2)}V`;
+            const label = `${isBlocked ? '🛑 FALLA' : '🧭 PASO ' + step.stepNumber}: ${step.componentId} (${valLabel} en ${step.outputNet})`;
             ctx.font = 'bold 11px monospace';
             const tw = ctx.measureText(label).width + 16;
             ctx.fillStyle = 'rgba(9, 13, 22, 0.92)';
@@ -1243,13 +1363,17 @@
           <div>${formattedText}</div>
         `;
 
+        if (data.intent && data.intent.primary_net) {
+          syncUiWithActiveNet(data.intent.primary_net, data.mazeTrace, data.intent);
+        } else if (data.inspectedNet) {
+          syncUiWithActiveNet(data.inspectedNet, data.mazeTrace, null);
+        }
         if (data.simulation) {
           applySimulationResult(data.simulation);
         }
         if (data.mazeTrace) {
-          applyMazeTrace(data.mazeTrace);
-        }
-        if (data.inspectedComponent) {
+          applyMazeTrace(data.mazeTrace, data.intent || null);
+        } else if (data.inspectedComponent) {
           focusOnComponent(data.inspectedComponent, data.inspectedNet, data.simulation ? data.simulation.diagnosticSummary : null);
         }
       } catch (e) {
