@@ -1397,6 +1397,11 @@
       ws.onmessage = (event) => {
         try {
           const cmd = JSON.parse(event.data);
+          if (cmd.action === 'workspace_switched') {
+            loadBoardGeometry();
+            loadWorkspaces();
+            return;
+          }
           if (cmd.simulation) {
             applySimulationResult(cmd.simulation);
           }
@@ -1499,6 +1504,17 @@
           selector.appendChild(opt);
         });
 
+        // Sincronizar el selector con el espacio activo actual en el servidor
+        try {
+          const activeRes = await fetch('/api/workspaces/active');
+          if (activeRes.ok && activeRes.status !== 204) {
+            const activeWs = await activeRes.json();
+            if (activeWs && activeWs.workspaceId) {
+              selector.value = activeWs.workspaceId;
+            }
+          }
+        } catch {}
+
         renderWorkspaceList(list);
       } catch (e) {
         console.warn('No se pudieron cargar los workspaces:', e);
@@ -1536,10 +1552,21 @@
     async function switchWorkspace(wsId) {
       if (!wsId) return;
       try {
-        await fetch(`/api/workspaces/active/${wsId}`, { method: 'POST' });
-        const res = await fetch(`/api/workspaces/${wsId}`);
-        const ws = await res.json();
-        document.getElementById('boardTitle').textContent = `Espacio: ${ws.name}`;
+        const res = await fetch(`/api/workspaces/active/${wsId}`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Error del servidor' }));
+          alert(err.error || 'Error al cambiar de espacio de trabajo');
+          return;
+        }
+        await loadBoardGeometry();
+        const searchInput = document.getElementById('compSearchInput');
+        if (searchInput) searchInput.value = '';
+        highlightedCompId = null;
+        highlightedNet = null;
+        activeSimulation = null;
+        activeMazeTrace = null;
+        const sel = document.getElementById('workspaceSelector');
+        if (sel && sel.value !== wsId) sel.value = wsId;
       } catch (e) {
         console.error('Error al cambiar de espacio:', e);
       }
@@ -1648,7 +1675,7 @@
         stagedWsFiles = [];
         closeWorkspaceModal();
         await loadWorkspaces();
-        document.getElementById('workspaceSelector').value = created.workspaceId;
+        await switchWorkspace(created.workspaceId);
       } catch (e) {
         alert('Error al crear espacio: ' + e.message);
       } finally {
@@ -1731,9 +1758,12 @@
       });
     }
 
-    loadBoardGeometry();
-    connectWebSocket();
-    loadWorkspaces();
+    async function initApp() {
+      await loadWorkspaces();
+      await loadBoardGeometry();
+      connectWebSocket();
+    }
+    initApp();
   </script>
 
   <!-- Modal 1: Espacios de Trabajo & Drag & Drop Multi-Archivo (v4) -->

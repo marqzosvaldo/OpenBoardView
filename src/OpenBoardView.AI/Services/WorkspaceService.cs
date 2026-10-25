@@ -153,6 +153,8 @@ public class WorkspaceService : IWorkspaceService
         {
             _activeWorkspaceId = workspaceId;
         }
+
+        await _persistence.SetSettingAsync("ActiveWorkspaceId", workspaceId);
         return true;
     }
 
@@ -166,12 +168,24 @@ public class WorkspaceService : IWorkspaceService
 
         if (string.IsNullOrEmpty(currentId))
         {
-            var list = await _persistence.GetAllWorkspacesAsync();
-            var first = list.FirstOrDefault();
-            if (first != null)
+            currentId = await _persistence.GetSettingAsync("ActiveWorkspaceId");
+            if (!string.IsNullOrEmpty(currentId))
             {
-                currentId = first.WorkspaceId;
+                var savedWs = await _persistence.GetWorkspaceByIdAsync(currentId);
+                if (savedWs != null)
+                {
+                    lock (_lock) { _activeWorkspaceId = currentId; }
+                    return savedWs;
+                }
+            }
+
+            var list = await _persistence.GetAllWorkspacesAsync();
+            var candidate = list.FirstOrDefault(w => w.FileCount > 0) ?? list.FirstOrDefault();
+            if (candidate != null)
+            {
+                currentId = candidate.WorkspaceId;
                 lock (_lock) { _activeWorkspaceId = currentId; }
+                await _persistence.SetSettingAsync("ActiveWorkspaceId", currentId);
             }
         }
 

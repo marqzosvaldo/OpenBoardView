@@ -37,6 +37,9 @@ public class BackgroundSyncWorker : BackgroundService
     {
         _logger.LogInformation("[BackgroundSyncWorker] Servicio de sincronización en segundo plano iniciado (Intervalo: {Minutes}m, Habilitado: {Enabled}).", _syncInterval.TotalMinutes, _enabled);
 
+        // Esperar unos segundos iniciales para permitir que el servidor Kestrel termine de iniciar completamente
+        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             if (_enabled)

@@ -179,6 +179,13 @@ public class SqlitePersistenceService : IPersistenceService
                     FOREIGN KEY (BoardId) REFERENCES Boards(BoardId) ON DELETE CASCADE
                 );
 
+                -- 7. Configuración y Estado Persistente de la Aplicación
+                CREATE TABLE IF NOT EXISTS AppSettings (
+                    Key TEXT PRIMARY KEY,
+                    Value TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+
                 -- Índices para búsquedas de alto rendimiento
                 CREATE INDEX IF NOT EXISTS idx_workspace_files ON WorkspaceFiles(WorkspaceId);
                 CREATE INDEX IF NOT EXISTS idx_boards_hashes ON Boards(BrdHash, PdfHash);
@@ -857,6 +864,34 @@ public class SqlitePersistenceService : IPersistenceService
             list.Add(reader.GetString(0));
         }
         return list;
+    }
+
+    #endregion
+
+    #region App Settings & State
+
+    public async Task SetSettingAsync(string key, string value)
+    {
+        using var connection = await OpenConnectionAsync();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = @"
+            INSERT INTO AppSettings (Key, Value, UpdatedAt)
+            VALUES ($key, $val, datetime('now'))
+            ON CONFLICT(Key) DO UPDATE SET Value = excluded.Value, UpdatedAt = excluded.UpdatedAt;
+        ";
+        cmd.Parameters.AddWithValue("$key", key);
+        cmd.Parameters.AddWithValue("$val", value);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<string?> GetSettingAsync(string key)
+    {
+        using var connection = await OpenConnectionAsync();
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT Value FROM AppSettings WHERE Key = $key;";
+        cmd.Parameters.AddWithValue("$key", key);
+        var result = await cmd.ExecuteScalarAsync();
+        return result != null && result != DBNull.Value ? result.ToString() : null;
     }
 
     #endregion

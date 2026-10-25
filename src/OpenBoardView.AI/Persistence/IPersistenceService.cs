@@ -33,6 +33,10 @@ public interface IPersistenceService
     Task<DiagnosticSessionDto?> GetActiveSessionAsync(string workspaceId, string boardId);
     Task UpdateSessionProgressAsync(string sessionId, int currentStepIndex, string status, string? stepMeasurementsJson);
 
+    // App Settings & Active Workspace State
+    Task SetSettingAsync(string key, string value);
+    Task<string?> GetSettingAsync(string key);
+
     // Vector Embeddings (sqlite-vec)
     bool IsVectorExtensionLoaded { get; }
     Task SaveRepairEmbeddingAsync(string repairId, float[] vector);

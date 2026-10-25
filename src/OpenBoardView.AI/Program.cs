@@ -34,123 +34,13 @@ builder.Services.AddSingleton<IWorkspaceService, WorkspaceService>();
 builder.Services.AddHttpClient<BackgroundSyncWorker>();
 builder.Services.AddHostedService<BackgroundSyncWorker>();
 
-// 1. Cargar y parsear topología BRD (Fase 1) + Esquemático PDF (Fase 2) + Grafo en Memoria (Fase 3) con Caché Instantáneo (<0.1s)
-builder.Services.AddSingleton<CircuitGraphBuilder>(sp =>
-{
-    var config = sp.GetRequiredService<IConfiguration>();
-    var env = sp.GetRequiredService<IHostEnvironment>();
-    var persistence = sp.GetRequiredService<IPersistenceService>();
+// 1. Gestor Dinámico de Circuitos, Grafo y Espacios de Trabajo (v4)
+builder.Services.AddSingleton<ActiveCircuitManager>();
+builder.Services.AddTransient<CircuitGraphBuilder>(sp => sp.GetRequiredService<ActiveCircuitManager>().CurrentGraph);
+builder.Services.AddTransient<CircuitSimulator>(sp => sp.GetRequiredService<ActiveCircuitManager>().CurrentSimulator);
+builder.Services.AddTransient<CircuitMazeDebugger>(sp => sp.GetRequiredService<ActiveCircuitManager>().CurrentMazeDebugger);
+builder.Services.AddTransient<FlowKnowledgeBase>(sp => sp.GetRequiredService<ActiveCircuitManager>().CurrentKnowledge);
 
-    // Resolución flexible de archivos BRD y PDF:
-    // 1. Argumentos CLI (--brd / --pdf)
-    // 2. Variables de entorno (BOARD_BRD_PATH / BOARD_PDF_PATH)
-    // 3. appsettings.json
-    // 4. Auto-detección en carpeta Boards/
-    // 5. Fallback predeterminado a Plan/
-    string? brdArg = null;
-    string? pdfArg = null;
-    for (int i = 0; i < args.Length - 1; i++)
-    {
-        if (args[i].Equals("--brd", StringComparison.OrdinalIgnoreCase)) brdArg = args[i + 1];
-        if (args[i].Equals("--pdf", StringComparison.OrdinalIgnoreCase)) pdfArg = args[i + 1];
-    }
-
-    string boardsDir = Path.GetFullPath(Path.Combine(env.ContentRootPath, "../../Boards"));
-    string? autoBrd = Directory.Exists(boardsDir) ? Directory.GetFiles(boardsDir, "*.brd").FirstOrDefault() : null;
-    string? autoPdf = Directory.Exists(boardsDir) ? Directory.GetFiles(boardsDir, "*.pdf").FirstOrDefault() : null;
-
-    string brdConfigPath = brdArg
-        ?? Environment.GetEnvironmentVariable("BOARD_BRD_PATH")
-        ?? config["BoardFiles:BrdPath"]
-        ?? autoBrd
-        ?? "../../Plan/Apple MacBook Pro 13 A1278 i5 2.5GHz 820-3115-B Boardview.brd";
-
-    string pdfConfigPath = pdfArg
-        ?? Environment.GetEnvironmentVariable("BOARD_PDF_PATH")
-        ?? config["BoardFiles:PdfPath"]
-        ?? autoPdf
-        ?? "../../Plan/Apple MacBook Pro A1278 13 MLB,J30 i5 2.5GHZ  051-9058  820-3115-B (03-12-2012) Schematics.pdf";
-
-    string brdFullPath = Path.IsPathRooted(brdConfigPath) ? brdConfigPath : Path.GetFullPath(Path.Combine(env.ContentRootPath, brdConfigPath));
-    string pdfFullPath = Path.IsPathRooted(pdfConfigPath) ? pdfConfigPath : Path.GetFullPath(Path.Combine(env.ContentRootPath, pdfConfigPath));
-
-    var brdParser = new BoardViewParser();
-    Console.WriteLine($"[Fase 1] Parseando archivo BRD: {Path.GetFileName(brdFullPath)}...");
-    BoardTopology topology = brdParser.ParseFile(brdFullPath);
-    Console.WriteLine($"[Fase 1] OK -> Componentes: {topology.Components.Count} | Redes: {topology.Nets.Count} | Desencriptado: {topology.WasEncrypted}");
-
-    // Cálculo de hashes para verificación de caché instantáneo (< 0.1s)
-    byte[] brdBytes = File.ReadAllBytes(brdFullPath);
-    string brdHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(brdBytes)).ToLowerInvariant();
-    string pdfHash = File.Exists(pdfFullPath)
-        ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(pdfFullPath))).ToLowerInvariant()
-        : "no_pdf";
-
-    var cachedBoard = persistence.GetBoardCacheByHashesAsync(brdHash, pdfHash).GetAwaiter().GetResult();
-    SchematicIndex? schematicIndex = null;
-
-    if (cachedBoard != null && !string.IsNullOrWhiteSpace(cachedBoard.CachedIndexJson))
-    {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        schematicIndex = SchematicIndexCacheSerializer.Deserialize(cachedBoard.CachedIndexJson);
-        sw.Stop();
-        Console.WriteLine($"[Caché SQLite] ⚡ ¡Inicio Instantáneo! Esquemático recuperado de SQLite en {sw.ElapsedMilliseconds} ms (< 0.1s) | Páginas: {schematicIndex?.TotalPages ?? 0} | Contexto: {schematicIndex?.ComponentContext.Count ?? 0} comps.");
-    }
-    else if (File.Exists(pdfFullPath))
-    {
-        Console.WriteLine($"[Fase 2] Indexando esquemático PDF: {Path.GetFileName(pdfFullPath)}...");
-        var pdfReader = new SchematicPdfReader();
-        schematicIndex = pdfReader.ReadAndIndexPdf(pdfFullPath, topology);
-        Console.WriteLine($"[Fase 2] OK -> Páginas: {schematicIndex.TotalPages} | Componentes con contexto PDF: {schematicIndex.ComponentContext.Count} | Valores 2D: {schematicIndex.ComponentValues.Count} | Redes con VOLTAGE=: {schematicIndex.NetVoltages.Count} | NO STUFF: {schematicIndex.NoStuffComponents.Count}");
-
-        // Persistir en SQLite para arranques instantáneos futuros
-        string boardId = Path.GetFileNameWithoutExtension(topology.FileName);
-        string serializedJson = SchematicIndexCacheSerializer.Serialize(schematicIndex);
-        var compCache = topology.Components
-            .Where(c => !string.IsNullOrWhiteSpace(c.Id))
-            .GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.First())
-            .Select(c => new ComponentCacheDto(
-                c.Id,
-                boardId,
-                c.Side.ToString(),
-                c.Quadrant,
-                c.SchematicPages.FirstOrDefault(),
-                c.Pins.Count
-            )).ToList();
-
-        // Asegurar que exista un workspace predeterminado para el caché
-        persistence.InsertWorkspaceAsync("Espacio Predeterminado", "Placa de referencia", "default_ws").GetAwaiter().GetResult();
-        persistence.SaveBoardCacheAsync(boardId, "default_ws", topology.FileName, brdHash, pdfHash, compCache, serializedJson).GetAwaiter().GetResult();
-        Console.WriteLine($"[Caché SQLite] Placa '{boardId}' indexada y guardada en SQLite para arranques instantáneos futuros.");
-    }
-
-    Console.WriteLine("[Fase 3] Construyendo grafo de circuito en memoria...");
-    return new CircuitGraphBuilder(topology, schematicIndex);
-});
-
-// 2. Registrar Simulador, Maze Debugger, Contexto, Herramientas y Proveedor IChatClient con Microsoft.Extensions.AI (Fase 4-6)
-builder.Services.AddSingleton<CircuitSimulator>();
-
-// Base de conocimiento de flujos de diagnóstico (JSON). Solo se aplican los flujos de las familias que coinciden con la placa cargada.
-builder.Services.AddSingleton<FlowKnowledgeBase>(sp =>
-{
-    var graph = sp.GetRequiredService<CircuitGraphBuilder>();
-    var env = sp.GetRequiredService<IHostEnvironment>();
-
-    var dirs = new[]
-    {
-        Path.Combine(AppContext.BaseDirectory, "Knowledge"),
-        Path.GetFullPath(Path.Combine(env.ContentRootPath, "../../Boards/knowledge"))
-    };
-    var kb = FlowKnowledgeBase.LoadFromDirectories(dirs, graph.Topology.FileName);
-
-    Console.WriteLine($"[Conocimiento] Familias cargadas: {kb.Loaded.Count} | Aplicables a '{graph.Topology.FileName}': {kb.Applicable.Count}");
-    foreach (var err in kb.LoadErrors)
-        Console.WriteLine($"[Conocimiento] ⚠ No se pudo cargar {err}");
-    return kb;
-});
-builder.Services.AddSingleton<CircuitMazeDebugger>();
 builder.Services.AddScoped<DiagnosticsAgentContext>();
 builder.Services.AddScoped<BoardDiagnosticsTools>();
 builder.Services.AddScoped<IChatClient>(sp =>
@@ -234,9 +124,14 @@ if (args.Contains("--test-persistence"))
         Console.WriteLine($"   - Componente: {s.ComponentId} | Casos: {s.FailureCount} | Probabilidad: {s.ProbabilityPercentage:F1}%");
     }
 
-    Console.WriteLine("\n✅ Todas las pruebas de persistencia v4 finalizaron con ÉXITO.\n");
+    await wsService.DeleteWorkspaceAsync(wsDto.WorkspaceId);
+    Console.WriteLine("\n✅ Todas las pruebas de persistencia v4 finalizaron con ÉXITO (datos de prueba limpiados).\n");
     return;
 }
+
+// Inicializar gestor dinámico de circuitos y cargar workspace activo o predeterminado
+var circuitManager = app.Services.GetRequiredService<ActiveCircuitManager>();
+await circuitManager.InitializeDefaultAsync(args);
 
 if (args.Contains("--verify") || args.Contains("--ask"))
 {

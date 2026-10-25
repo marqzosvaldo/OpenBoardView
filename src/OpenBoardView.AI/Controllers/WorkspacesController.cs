@@ -10,10 +10,12 @@ namespace OpenBoardView.AI.Controllers;
 public class WorkspacesController : ControllerBase
 {
     private readonly IWorkspaceService _workspaceService;
+    private readonly ActiveCircuitManager _activeCircuitManager;
 
-    public WorkspacesController(IWorkspaceService workspaceService)
+    public WorkspacesController(IWorkspaceService workspaceService, ActiveCircuitManager activeCircuitManager)
     {
         _workspaceService = workspaceService;
+        _activeCircuitManager = activeCircuitManager;
     }
 
     [HttpGet]
@@ -34,9 +36,9 @@ public class WorkspacesController : ControllerBase
     [HttpPost("active/{id}")]
     public async Task<IActionResult> SetActiveWorkspace(string id)
     {
-        var ok = await _workspaceService.SetActiveWorkspaceAsync(id);
-        if (!ok) return NotFound(new { error = $"Espacio de trabajo con ID '{id}' no encontrado." });
-        return Ok(new { success = true, activeWorkspaceId = id });
+        var ok = await _activeCircuitManager.SwitchToWorkspaceAsync(id);
+        if (!ok) return NotFound(new { error = $"No se pudo activar el espacio de trabajo con ID '{id}'. Asegúrate de que contenga un archivo CAD (.brd) válido." });
+        return Ok(new { success = true, activeWorkspaceId = id, activeBoard = _activeCircuitManager.ActiveBoardName });
     }
 
     [HttpGet("{id}")]
@@ -81,6 +83,7 @@ public class WorkspacesController : ControllerBase
             return BadRequest(new { error = "Los archivos adjuntos están vacíos." });
 
         var workspace = await _workspaceService.CreateWorkspaceAsync(name, description, fileRequests);
+        await _activeCircuitManager.SwitchToWorkspaceAsync(workspace.WorkspaceId);
         return Ok(workspace);
     }
 
