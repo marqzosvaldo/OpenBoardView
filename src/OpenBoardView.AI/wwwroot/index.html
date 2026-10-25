@@ -1502,7 +1502,7 @@
         document.getElementById('wsDot').style.background = '#22c55e';
         document.getElementById('wsLabel').textContent = 'WebSocket Activo';
       };
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         try {
           const cmd = JSON.parse(event.data);
           if (cmd.action === 'workspace_switched') {
