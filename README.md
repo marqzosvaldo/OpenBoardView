@@ -22,6 +22,8 @@ Toda la documentación detallada del proyecto se encuentra organizada en la carp
 
 | Documento | Descripción |
 | :--- | :--- |
+| 📘 **[docs/master-doc-2026-10-25-22-18.md](docs/master-doc-2026-10-25-22-18.md)** | **Master Document Unificado:** Documento exhaustivo integral compilado para ingestión contextual en NotebookLM y bases de conocimiento. |
+| 📋 **[docs/SRS-doc-2026-10-25-22-18.md](docs/SRS-doc-2026-10-25-22-18.md)** | **Software Requirements Specification (SRS):** Especificación formal según estándar IEEE 830 / ISO/IEC/IEEE 29148 con matriz de trazabilidad. |
 | 🏛️ **[docs/ARQUITECTURA_SISTEMA_V4.md](docs/ARQUITECTURA_SISTEMA_V4.md)** | Arquitectura de software integral: Core C++, Backend .NET 10, esquema SQLite WAL, caché <0.1s y sincronización reactiva. |
 | 🧠 **[docs/GUIA_PROVEEDORES_IA_Y_RESILIENCIA.md](docs/GUIA_PROVEEDORES_IA_Y_RESILIENCIA.md)** | Detección 3-Tier, cascada de modelos Gemini (15s timeout), preservación de `thoughtSignature`, Ollama local y chip de estado. |
 | 💻 **[docs/MANUAL_DE_DESARROLLO_Y_REFERENCIA_API.md](docs/MANUAL_DE_DESARROLLO_Y_REFERENCIA_API.md)** | Referencia exhaustiva de endpoints REST, SSE, WebSockets, DTOs, CLI flags (`--test-persistence`) y 80 pruebas unitarias. |
