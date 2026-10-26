@@ -1,3 +1,4 @@
+using OpenBoardView.AI.Algorithms;
 using OpenBoardView.AI.Models;
 using OpenBoardView.AI.Parsers;
 
@@ -13,8 +14,8 @@ public record ComponentNodeSummary(
     int PinCount,
     bool ConnectedToGround,
     List<string> ConnectedNets,
-    string? SchematicContext,
-    List<int> SchematicPages,
+    string? SchematicContext = null,
+    List<int>? SchematicPages = null,
     string? SchematicValue = null,
     bool IsNoStuff = false);
 
@@ -43,7 +44,7 @@ public record UpstreamHopDto(
 /// Fase 3: Motor del Grafo y Dependencias.
 /// Une la topología física (.brd) y la semántica del esquemático (.pdf) en listas de adyacencia en memoria.
 /// </summary>
-public class CircuitGraphBuilder
+public class CircuitGraphBuilder : IBrdTopologyProvider
 {
     private readonly BoardTopology _topology;
     private readonly SchematicIndex? _schematicIndex;
@@ -54,6 +55,11 @@ public class CircuitGraphBuilder
     {
         _topology = topology ?? throw new ArgumentNullException(nameof(topology));
         _schematicIndex = schematicIndex;
+
+        if (_schematicIndex != null)
+        {
+            OpenBoardView.AI.Parsers.SchematicPdfReader.EnrichTopologyWithIndex(_topology, _schematicIndex);
+        }
 
         _componentsById = _topology.Components
             .GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase)
@@ -95,6 +101,65 @@ public class CircuitGraphBuilder
         if (!_componentsById.TryGetValue(componentId.Trim(), out var comp)) return null;
 
         return MapComponentSummary(comp);
+    }
+
+    public bool IsComponentPinConnectedToGnd(string componentId)
+    {
+        var comp = GetComponentDetails(componentId);
+        return comp != null && comp.ConnectedToGround;
+    }
+
+    public List<string> GetParallelCapacitorIdsOnNet(string netName, string? excludeCompId = null)
+    {
+        var comps = GetComponentsOnNet(netName);
+        return comps
+            .Where(c => !c.IsNoStuff && c.Category == "Capacitor" && c.ConnectedToGround)
+            .Where(c => excludeCompId == null || !c.ComponentId.Equals(excludeCompId, StringComparison.OrdinalIgnoreCase))
+            .Select(c => c.ComponentId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Identifica dinámicamente el riel principal de alimentación (línea maestra de standby / sistema)
+    /// de la placa actualmente cargada, inspeccionando las redes del .brd sin asumir nombres fijos
+    /// (ej. PP3V8_AON o PPBUS_AON en Apple Silicon M-series, PPBUS_G3H en Intel, etc.).
+    /// </summary>
+    public string GetBoardMasterPowerRail()
+    {
+        var powerNets = _topology.Nets
+            .Where(n => !n.IsGround && !n.IsUnconnected && n.Pins.Count > 0)
+            .Where(n => n.Name.StartsWith("PP", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (powerNets.Count == 0)
+        {
+            var anyNet = _topology.Nets
+                .Where(n => !n.IsGround && !n.IsUnconnected && n.Pins.Count > 0)
+                .OrderByDescending(n => n.Pins.Count)
+                .FirstOrDefault();
+            return anyNet?.Name ?? "PPBUS_G3H";
+        }
+
+        var scored = powerNets.Select(n =>
+        {
+            int score = n.Pins.Count;
+            string upper = n.Name.ToUpperInvariant();
+
+            if (upper.Contains("PPBUS_G3H") || upper == "PPBUS_AON" || upper == "PP3V8_AON") score += 10000;
+            else if (upper.StartsWith("PPBUS_") || upper.StartsWith("PP3V8_")) score += 5000;
+            else if (upper.Contains("DCIN") || upper.Contains("VBUS")) score += 3000;
+            else if (upper.Contains("AON") || upper.Contains("G3H") || upper.Contains("MAIN")) score += 2000;
+            else if (upper.Contains("3V42") || upper.Contains("3V3_S5") || upper.Contains("5V_S5")) score += 1000;
+
+            if (upper.Contains("_ISNS") || upper.Contains("SPKR") || upper.Contains("BKLT")) score -= 3000;
+
+            return (Net: n, Score: score);
+        })
+        .OrderByDescending(x => x.Score)
+        .First();
+
+        return scored.Net.Name;
     }
 
     /// <summary>

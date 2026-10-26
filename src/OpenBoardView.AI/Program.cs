@@ -5,121 +5,80 @@ using OpenBoardView.AI.Graph;
 using OpenBoardView.AI.Knowledge;
 using OpenBoardView.AI.Models;
 using OpenBoardView.AI.Parsers;
+using OpenBoardView.AI.Persistence;
 using OpenBoardView.AI.Server;
+using OpenBoardView.AI.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 builder.WebHost.UseUrls("http://127.0.0.1:5080");
 
+builder.Services.AddControllers();
 builder.Services.AddHttpClient();
 builder.Services.AddSingleton<ObvWebSocketServer>();
 
-// 1. Cargar y parsear topología BRD (Fase 1) + Esquemático PDF (Fase 2) + Grafo en Memoria (Fase 3)
-builder.Services.AddSingleton<CircuitGraphBuilder>(sp =>
+// Registro del Servicio de Persistencia Híbrida SQLite (v4)
+builder.Services.AddSingleton<IPersistenceService>(sp =>
 {
-    var config = sp.GetRequiredService<IConfiguration>();
     var env = sp.GetRequiredService<IHostEnvironment>();
-
-    // Resolución flexible de archivos BRD y PDF:
-    // 1. Argumentos CLI (--brd / --pdf)
-    // 2. Variables de entorno (BOARD_BRD_PATH / BOARD_PDF_PATH)
-    // 3. appsettings.json
-    // 4. Auto-detección en carpeta Boards/
-    // 5. Fallback predeterminado a Plan/
-    string? brdArg = null;
-    string? pdfArg = null;
-    for (int i = 0; i < args.Length - 1; i++)
-    {
-        if (args[i].Equals("--brd", StringComparison.OrdinalIgnoreCase)) brdArg = args[i + 1];
-        if (args[i].Equals("--pdf", StringComparison.OrdinalIgnoreCase)) pdfArg = args[i + 1];
-    }
-
-    string boardsDir = Path.GetFullPath(Path.Combine(env.ContentRootPath, "../../Boards"));
-    string? autoBrd = Directory.Exists(boardsDir) ? Directory.GetFiles(boardsDir, "*.brd").FirstOrDefault() : null;
-    string? autoPdf = Directory.Exists(boardsDir) ? Directory.GetFiles(boardsDir, "*.pdf").FirstOrDefault() : null;
-
-    string brdConfigPath = brdArg
-        ?? Environment.GetEnvironmentVariable("BOARD_BRD_PATH")
-        ?? config["BoardFiles:BrdPath"]
-        ?? autoBrd
-        ?? "../../Plan/Apple MacBook Pro 13 A1278 i5 2.5GHz 820-3115-B Boardview.brd";
-
-    string pdfConfigPath = pdfArg
-        ?? Environment.GetEnvironmentVariable("BOARD_PDF_PATH")
-        ?? config["BoardFiles:PdfPath"]
-        ?? autoPdf
-        ?? "../../Plan/Apple MacBook Pro A1278 13 MLB,J30 i5 2.5GHZ  051-9058  820-3115-B (03-12-2012) Schematics.pdf";
-
-    string brdFullPath = Path.IsPathRooted(brdConfigPath) ? brdConfigPath : Path.GetFullPath(Path.Combine(env.ContentRootPath, brdConfigPath));
-    string pdfFullPath = Path.IsPathRooted(pdfConfigPath) ? pdfConfigPath : Path.GetFullPath(Path.Combine(env.ContentRootPath, pdfConfigPath));
-
-    var brdParser = new BoardViewParser();
-    Console.WriteLine($"[Fase 1] Parseando archivo BRD: {Path.GetFileName(brdFullPath)}...");
-    BoardTopology topology = brdParser.ParseFile(brdFullPath);
-    Console.WriteLine($"[Fase 1] OK -> Componentes: {topology.Components.Count} | Redes: {topology.Nets.Count} | Desencriptado: {topology.WasEncrypted}");
-
-    SchematicIndex? schematicIndex = null;
-    if (File.Exists(pdfFullPath))
-    {
-        Console.WriteLine($"[Fase 2] Indexando esquemático PDF: {Path.GetFileName(pdfFullPath)}...");
-        var pdfReader = new SchematicPdfReader();
-        schematicIndex = pdfReader.ReadAndIndexPdf(pdfFullPath, topology);
-        Console.WriteLine($"[Fase 2] OK -> Páginas: {schematicIndex.TotalPages} | Componentes con contexto PDF: {schematicIndex.ComponentContext.Count} | Valores 2D: {schematicIndex.ComponentValues.Count} | Redes con VOLTAGE=: {schematicIndex.NetVoltages.Count} | NO STUFF: {schematicIndex.NoStuffComponents.Count}");
-    }
-
-    Console.WriteLine("[Fase 3] Construyendo grafo de circuito en memoria...");
-    return new CircuitGraphBuilder(topology, schematicIndex);
+    var dbPath = Path.Combine(env.ContentRootPath, "Data", "openboardview_ai.db");
+    var service = new SqlitePersistenceService(dbPath);
+    service.InitializeAsync().GetAwaiter().GetResult();
+    return service;
 });
 
-// 2. Registrar Simulador, Maze Debugger, Contexto, Herramientas y Proveedor IChatClient con Microsoft.Extensions.AI (Fase 4-6)
-builder.Services.AddSingleton<CircuitSimulator>();
+// Administrador de Espacios de Trabajo Multi-Archivo (v4)
+builder.Services.AddSingleton<IWorkspaceService, WorkspaceService>();
 
-// Base de conocimiento de flujos de diagnóstico (JSON). Solo se aplican los flujos de las familias que coinciden con la placa cargada.
-builder.Services.AddSingleton<FlowKnowledgeBase>(sp =>
-{
-    var graph = sp.GetRequiredService<CircuitGraphBuilder>();
-    var env = sp.GetRequiredService<IHostEnvironment>();
+// Servicio Universal de Importación de Presets y Plantillas de Diagnóstico (v4)
+builder.Services.AddSingleton<IPresetImporterService, PresetImporterService>();
 
-    var dirs = new[]
-    {
-        Path.Combine(AppContext.BaseDirectory, "Knowledge"),
-        Path.GetFullPath(Path.Combine(env.ContentRootPath, "../../Boards/knowledge"))
-    };
-    var kb = FlowKnowledgeBase.LoadFromDirectories(dirs, graph.Topology.FileName);
+// Motor Autónomo de Análisis de Esquemáticos con Optimización de Tokens (v4)
+builder.Services.AddSingleton<AutomatedSchematicAnalyzer>();
 
-    Console.WriteLine($"[Conocimiento] Familias cargadas: {kb.Loaded.Count} | Aplicables a '{graph.Topology.FileName}': {kb.Applicable.Count}");
-    foreach (var err in kb.LoadErrors)
-        Console.WriteLine($"[Conocimiento] ⚠ No se pudo cargar {err}");
-    return kb;
-});
-builder.Services.AddSingleton<CircuitMazeDebugger>();
+// Servicio de Sincronización en Segundo Plano hacia la Nube (v4)
+builder.Services.AddHttpClient<BackgroundSyncWorker>();
+builder.Services.AddHostedService<BackgroundSyncWorker>();
+
+// 1. Gestor Dinámico de Circuitos, Grafo y Espacios de Trabajo (v4)
+builder.Services.AddSingleton<ActiveCircuitManager>();
+builder.Services.AddTransient<CircuitGraphBuilder>(sp => sp.GetRequiredService<ActiveCircuitManager>().CurrentGraph);
+builder.Services.AddTransient<CircuitSimulator>(sp => sp.GetRequiredService<ActiveCircuitManager>().CurrentSimulator);
+builder.Services.AddTransient<CircuitMazeDebugger>(sp => sp.GetRequiredService<ActiveCircuitManager>().CurrentMazeDebugger);
+builder.Services.AddTransient<FlowKnowledgeBase>(sp => sp.GetRequiredService<ActiveCircuitManager>().CurrentKnowledge);
+
 builder.Services.AddScoped<DiagnosticsAgentContext>();
 builder.Services.AddScoped<BoardDiagnosticsTools>();
+builder.Services.AddSingleton<InferenceCapabilityProbe>(sp =>
+{
+    var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
+    var config = sp.GetRequiredService<IConfiguration>();
+    var client = httpClientFactory.CreateClient("InferenceProbe");
+    return new InferenceCapabilityProbe(client, config);
+});
+
 builder.Services.AddScoped<IChatClient>(sp =>
 {
     var httpClientFactory = sp.GetRequiredService<IHttpClientFactory>();
     var config = sp.GetRequiredService<IConfiguration>();
-    var provider = config["AiProvider:Provider"] ?? "Gemini";
+    var probe = sp.GetRequiredService<InferenceCapabilityProbe>();
+    var status = probe.ProbeCapabilitiesAsync().GetAwaiter().GetResult();
 
     IChatClient baseClient;
-    if (provider.Equals("Ollama", StringComparison.OrdinalIgnoreCase) ||
-        provider.Equals("OpenAI", StringComparison.OrdinalIgnoreCase))
+    if (status.ActiveTier == "Tier1_OllamaLocal" && status.IsOnline)
     {
         var httpClient = httpClientFactory.CreateClient("OllamaChatClient");
         var endpoint = config["AiProvider:OllamaOrOpenAI:Endpoint"] ?? "http://localhost:11434/api/chat";
-        var model = config["AiProvider:OllamaOrOpenAI:Model"] ?? "qwen2.5-coder:7b";
         var apiKey = config["AiProvider:OllamaOrOpenAI:ApiKey"];
-        baseClient = new OllamaChatClient(httpClient, endpoint, model, apiKey);
+        baseClient = new OllamaChatClient(httpClient, endpoint, status.Model, apiKey);
     }
     else
     {
         var httpClient = httpClientFactory.CreateClient("GeminiChatClient");
-        var apiKey = config["AiProvider:Gemini:ApiKey"];
-        if (string.IsNullOrWhiteSpace(apiKey) || apiKey.StartsWith("TU_API_KEY") || apiKey.StartsWith("YOUR_"))
-        {
-            apiKey = Environment.GetEnvironmentVariable("GEMINI_API_KEY") ?? apiKey ?? string.Empty;
-        }
-        var model = config["AiProvider:Gemini:Model"] ?? "gemini-3.1-flash-lite";
+        var apiKey = probe.GetEffectiveGeminiApiKey();
+        var model = !string.IsNullOrWhiteSpace(status.Model) && status.Model.StartsWith("gemini")
+            ? status.Model 
+            : "gemini-2.5-flash";
         baseClient = new GeminiChatClient(httpClient, apiKey, model);
     }
 
@@ -132,7 +91,70 @@ builder.Services.AddScoped<BoardDiagnosticsService>();
 
 var app = builder.Build();
 
-// Modo CLI para verificación rápida (`dotnet run -- --verify` o `dotnet run -- --ask "..."`)
+// Modo CLI para verificación rápida (`dotnet run -- --verify`, `dotnet run -- --ask "..."` o `dotnet run -- --test-persistence`)
+if (args.Contains("--test-persistence"))
+{
+    using var scope = app.Services.CreateScope();
+    var persistence = scope.ServiceProvider.GetRequiredService<IPersistenceService>();
+    var wsService = scope.ServiceProvider.GetRequiredService<IWorkspaceService>();
+
+    Console.WriteLine("\n=======================================================");
+    Console.WriteLine("    VERIFICACIÓN DE PERSISTENCIA Y WORKSPACES (v4)     ");
+    Console.WriteLine("=======================================================");
+
+    var wsDto = await wsService.CreateWorkspaceAsync("Test Verification WS", "Espacio de prueba", new List<FileUploadRequest>
+    {
+        new() { FileName = "820-3115-B.brd", ContentBytes = new byte[] { 1, 2, 3, 4 }, Length = 4 },
+        new() { FileName = "Apple_Schematics.pdf", ContentBytes = new byte[] { 5, 6, 7, 8 }, Length = 4 }
+    });
+
+    Console.WriteLine($"1) Workspace creado con éxito: ID={wsDto.WorkspaceId}");
+    var detail = await wsService.GetWorkspaceByIdAsync(wsDto.WorkspaceId);
+    Console.WriteLine($"2) Archivos en Workspace ({detail?.Files.Count ?? 0} detectados):");
+    foreach (var f in detail?.Files ?? new())
+    {
+        Console.WriteLine($"   - {f.FileName} [{f.FileType}] | Hash: {f.FileHash[..8]}...");
+    }
+
+    Console.WriteLine($"3) Registrando placa y reparación estadística...");
+    await persistence.SaveBoardCacheAsync("820-3115-B", wsDto.WorkspaceId, "MacBook Pro A1278", "mock_brd_hash", "mock_pdf_hash", new List<ComponentCacheDto>());
+    await persistence.RecordRepairAsync(new RepairRecordDto
+    {
+        WorkspaceId = wsDto.WorkspaceId,
+        BoardId = "820-3115-B",
+        SymptomKey = "PPBUS_G3H_MISSING",
+        FaultyComponent = "C7513",
+        FaultType = "SHORT_TO_GND",
+        MeasuredImpedance = 0.4
+    });
+
+    var stats = await persistence.GetTopFailingComponentsAsync("820-3115-B", "PPBUS_G3H_MISSING");
+    Console.WriteLine($"4) Estadísticas de falla para 'PPBUS_G3H_MISSING':");
+    foreach (var s in stats)
+    {
+        Console.WriteLine($"   - Componente: {s.ComponentId} | Casos: {s.FailureCount} | Probabilidad: {s.ProbabilityPercentage:F1}%");
+    }
+
+    await wsService.DeleteWorkspaceAsync(wsDto.WorkspaceId);
+    Console.WriteLine("\n✅ Todas las pruebas de persistencia v4 finalizaron con ÉXITO (datos de prueba limpiados).\n");
+    return;
+}
+
+// Inicializar gestor dinámico de circuitos y cargar workspace activo o predeterminado
+var circuitManager = app.Services.GetRequiredService<ActiveCircuitManager>();
+await circuitManager.InitializeDefaultAsync(args);
+
+// Auto-seed de plantillas curadas de diagnóstico (Presets) en SQLite
+var presetImporter = app.Services.GetRequiredService<IPresetImporterService>();
+string presetsDir = Path.Combine(app.Environment.ContentRootPath, "Presets");
+if (Directory.Exists(presetsDir))
+{
+    foreach (var presetFile in Directory.GetFiles(presetsDir, "*.json"))
+    {
+        await presetImporter.ImportPresetFromJsonAsync(presetFile);
+    }
+}
+
 if (args.Contains("--verify") || args.Contains("--ask"))
 {
     using var scope = app.Services.CreateScope();
@@ -272,6 +294,13 @@ app.MapGet("/api/board/geometry", (CircuitGraphBuilder graph) =>
     });
 });
 
+app.MapGet("/api/board/presets", async (ActiveCircuitManager circuitManager, IPresetImporterService importer) =>
+{
+    var board = circuitManager.ActiveBoardName ?? "820-02757";
+    var presets = await importer.GetPresetsForBoardAsync(board);
+    return Results.Ok(presets);
+});
+
 app.MapGet("/api/board/net/{netName}/quadrants", (string netName, BoardDiagnosticsTools tools) =>
     Results.Ok(tools.FindShortCircuitCandidatesByQuadrant(netName)));
 
@@ -292,21 +321,33 @@ app.MapPost("/api/board/simulate", async (SimulationRequestDto request, CircuitS
     return Results.Ok(sim);
 });
 
-app.MapPost("/api/board/debugger/trace", async (MazeTraceRequestDto request, CircuitMazeDebugger mazeDebugger, ObvWebSocketServer wsServer, CancellationToken ct) =>
+app.MapPost("/api/board/debugger/trace", async (
+    MazeTraceRequestDto request, 
+    CircuitMazeDebugger mazeDebugger, 
+    IPersistenceService persistence,
+    CircuitGraphBuilder graph,
+    ObvWebSocketServer wsServer, 
+    CancellationToken ct) =>
 {
-    var trace = mazeDebugger.BuildTrace(request);
-    var activeNode = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) ?? trace.Steps.First();
-    var wsPayload = new ObvUiCommandPayload(
-        Action: "maze_debugger",
-        Component: activeNode.ComponentId,
-        Net: !string.IsNullOrWhiteSpace(trace.TargetNet) ? trace.TargetNet : activeNode.OutputNet,
-        Quadrant: activeNode.Quadrant,
-        X: activeNode.X,
-        Y: activeNode.Y,
-        Message: trace.OverallDiagnosis,
-        MazeTrace: trace
-    );
-    await wsServer.BroadcastCommandAsync(wsPayload, ct);
+    var boardId = Path.GetFileNameWithoutExtension(graph.Topology.FileName);
+    var failureStats = await persistence.GetTopFailingComponentsAsync(boardId, request.QueryOrSymptom);
+    var preset = await persistence.GetDiagnosticPresetAsync(boardId, request.QueryOrSymptom);
+    var trace = mazeDebugger.BuildTrace(request, failureStats, preset);
+    var activeNode = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) ?? trace.Steps.FirstOrDefault();
+    if (activeNode != null)
+    {
+        var wsPayload = new ObvUiCommandPayload(
+            Action: "maze_debugger",
+            Component: activeNode.ComponentId,
+            Net: !string.IsNullOrWhiteSpace(trace.TargetNet) ? trace.TargetNet : activeNode.OutputNet,
+            Quadrant: activeNode.Quadrant,
+            X: activeNode.X,
+            Y: activeNode.Y,
+            Message: trace.OverallDiagnosis,
+            MazeTrace: trace
+        );
+        await wsServer.BroadcastCommandAsync(wsPayload, ct);
+    }
     return Results.Ok(trace);
 });
 
@@ -314,6 +355,40 @@ app.MapPost("/api/agent/intent", (AgentQueryRequest request, CircuitGraphBuilder
 {
     var intent = DiagnosticIntentParser.Parse(request.Prompt, graph, kb, mazeDebugger);
     return Results.Ok(intent);
+});
+
+app.MapGet("/api/agent/capabilities", async (InferenceCapabilityProbe probe) =>
+{
+    var status = await probe.ProbeCapabilitiesAsync(forceRefresh: false);
+    return Results.Ok(status);
+});
+
+app.MapPost("/api/agent/capabilities/retry", async (InferenceCapabilityProbe probe) =>
+{
+    var status = await probe.ProbeCapabilitiesAsync(forceRefresh: true);
+    return Results.Ok(status);
+});
+
+app.MapPost("/api/agent/capabilities/apikey", async (ApiKeyUpdateRequest req, InferenceCapabilityProbe probe) =>
+{
+    if (string.IsNullOrWhiteSpace(req.ApiKey))
+    {
+        return Results.BadRequest(new { error = "La API Key no puede estar vacía" });
+    }
+    probe.SetGeminiApiKey(req.ApiKey);
+    var status = await probe.ProbeCapabilitiesAsync(forceRefresh: true);
+    return Results.Ok(status);
+});
+
+app.MapPost("/api/agent/capabilities/model", async (ModelSelectRequest req, InferenceCapabilityProbe probe) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Model))
+    {
+        return Results.BadRequest(new { error = "El nombre del modelo no puede estar vacío" });
+    }
+    probe.SetSelectedModel(req.Model);
+    var status = await probe.ProbeCapabilitiesAsync(forceRefresh: true);
+    return Results.Ok(status);
 });
 
 app.MapPost("/api/agent/query", async (AgentQueryRequest request, BoardDiagnosticsService agent, CancellationToken ct) =>
@@ -337,4 +412,10 @@ app.MapPost("/api/agent/stream", async (HttpContext httpContext, AgentQueryReque
     await httpContext.Response.WriteAsync("data: [DONE]\n\n", ct);
 });
 
+// Registrar controladores de Workspaces, Reparaciones y Sesiones (v4)
+app.MapControllers();
+
 app.Run();
+
+public record ApiKeyUpdateRequest(string ApiKey);
+public record ModelSelectRequest(string Model);

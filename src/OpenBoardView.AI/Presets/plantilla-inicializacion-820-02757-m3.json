@@ -1,0 +1,106 @@
+{
+  "boardId": "820-02757",
+  "modelName": "MacBook Pro 14\" M3 A2918 (2023)",
+  "drawingNumber": "051-07754",
+  "platformCode": "X2482 MLB",
+  "architecture": "Apple Silicon M3",
+  "diagnosticPresets": [
+    {
+      "symptomKey": "PP3V8_AON_MISSING",
+      "symptomDescription": "Equipo no enciende, congelado en 5V / 30mA (Sin negociación USB-PD a 20V), PP3V8_AON en 0V",
+      "coldImpedanceThresholds": {
+        "shortCircuitThresholdOhms": 50.0,
+        "normalMinOhms": 1000.0,
+        "notes": "Si la impedancia es < 50 Ω, existe un corto a tierra directo. No inyectar voltaje si la impedancia es normal (> 1 kΩ)."
+      },
+      "stepperNodes": [
+        {
+          "stepNumber": 1,
+          "componentId": "LR503",
+          "pin": "1",
+          "signalName": "PP3V8_AON",
+          "mode": "VOLTAGE_DC",
+          "expectedNominal": "3.80 V",
+          "faultNominal": "0.00 V",
+          "schematicPage": 57,
+          "description": "Prueba inicial de presencia del riel Always-On de 3.8V."
+        },
+        {
+          "stepNumber": 2,
+          "componentId": "L5800",
+          "pin": "2",
+          "signalName": "PP3V8_AON_PHASE1",
+          "mode": "VOLTAGE_DC",
+          "expectedNominal": "3.80 V",
+          "faultNominal": "0.00 V",
+          "schematicPage": 58,
+          "description": "Fase 1 del conversor Buck impulsado por U5700 (RAA225501)."
+        },
+        {
+          "stepNumber": 3,
+          "componentId": "L5820",
+          "pin": "2",
+          "signalName": "PP3V8_AON_PHASE2",
+          "mode": "VOLTAGE_DC",
+          "expectedNominal": "3.80 V",
+          "faultNominal": "0.00 V",
+          "schematicPage": 58,
+          "description": "Fase 2 del conversor Buck impulsado por U5700 (RAA225501)."
+        },
+        {
+          "stepNumber": 4,
+          "componentId": "L5840",
+          "pin": "2",
+          "signalName": "PP3V8_AON_PHASE3",
+          "mode": "VOLTAGE_DC",
+          "expectedNominal": "3.80 V",
+          "faultNominal": "0.00 V",
+          "schematicPage": 58,
+          "description": "Fase 3 del conversor Buck impulsado por U5700 (RAA225501)."
+        },
+        {
+          "stepNumber": 5,
+          "componentId": "R5156",
+          "pin": "1",
+          "signalName": "SYS_DETECT",
+          "mode": "VOLTAGE_DC",
+          "expectedNominal": "3.80 V",
+          "faultNominal": "0.00 V",
+          "schematicPage": 52,
+          "description": "Señal de detección de presencia del sistema requerida por el PMU."
+        },
+        {
+          "stepNumber": 6,
+          "componentId": "R5800",
+          "pin": "2",
+          "signalName": "P3V8AON_PWR_EN",
+          "mode": "VOLTAGE_DC",
+          "expectedNominal": "1.80 V - 3.30 V",
+          "faultNominal": "0.00 V",
+          "schematicPage": 57,
+          "description": "Habilitación de control enviada desde el PMU U8100 hacia el regulador U5700."
+        }
+      ],
+      "keyIntegrates": [
+        {
+          "componentId": "U5200",
+          "chipName": "RAA489900",
+          "function": "Charger PMIC (Generador de PPBUS_AON ~12.2V - 13.05V)",
+          "schematicPage": 52
+        },
+        {
+          "componentId": "U5700",
+          "chipName": "RAA225501",
+          "function": "Buck Regulator Tri-Phase de 3.8V Always-On (PP3V8_AON)",
+          "schematicPage": 57
+        },
+        {
+          "componentId": "U8100",
+          "chipName": "MPMU (Main Power Management Unit)",
+          "function": "Administrador de energía principal del SoC M3",
+          "schematicPage": 81
+        }
+      ]
+    }
+  ]
+}

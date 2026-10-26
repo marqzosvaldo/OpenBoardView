@@ -264,6 +264,182 @@
       letter-spacing: 0.5px;
       margin-bottom: 6px;
     }
+    .chat-header-bar {
+      padding: 7px 14px;
+      background: rgba(17, 24, 39, 0.95);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .chat-header-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .ai-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px 3px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+    .ai-chip.online {
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.35);
+      color: #86efac;
+    }
+    .ai-chip.online:hover {
+      background: rgba(34, 197, 94, 0.22);
+      border-color: rgba(34, 197, 94, 0.5);
+    }
+    .ai-chip.offline {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+    .ai-chip.offline:hover {
+      background: rgba(239, 68, 68, 0.22);
+      border-color: rgba(239, 68, 68, 0.5);
+    }
+    .ai-chip.probing {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #fde047;
+    }
+    .ai-chip-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .ai-chip.online .ai-chip-dot {
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e;
+    }
+    .ai-chip.offline .ai-chip-dot {
+      background: #ef4444;
+      box-shadow: 0 0 6px #ef4444;
+    }
+    .ai-chip.probing .ai-chip-dot {
+      background: #f59e0b;
+      box-shadow: 0 0 6px #f59e0b;
+      animation: pulse-dot 1s infinite;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(0.75); }
+    }
+    .ai-chip-model {
+      font-weight: 600;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .ai-model-select {
+      background: transparent;
+      border: none;
+      color: inherit;
+      font-weight: 600;
+      font-size: 11px;
+      cursor: pointer;
+      outline: none;
+      padding: 0 4px 0 0;
+      font-family: inherit;
+      max-width: 145px;
+    }
+    .ai-model-select:focus {
+      outline: none;
+    }
+    .ai-model-select option {
+      background: #111827;
+      color: #f8fafc;
+      padding: 6px;
+    }
+    .ai-chip-badge {
+      font-size: 10px;
+      opacity: 0.85;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .ai-chip-retry {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      padding: 2px;
+      border-radius: 4px;
+      opacity: 0.75;
+      transition: all 0.15s ease;
+    }
+    .ai-chip-retry:hover {
+      opacity: 1;
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .ai-chip-retry.spinning svg {
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin {
+      100% { transform: rotate(360deg); }
+    }
+    .api-key-popover {
+      padding: 8px 12px;
+      background: rgba(30, 41, 59, 0.95);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .api-key-popover input {
+      flex: 1;
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      outline: none;
+    }
+    .api-key-popover input:focus {
+      border-color: var(--accent);
+    }
+    .api-key-popover button.btn-save {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .api-key-popover button.btn-save:hover {
+      background: #1d4ed8;
+    }
+    .api-key-popover button.btn-close {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 14px;
+      padding: 0 4px;
+    }
     .chat-history {
       flex: 1;
       overflow-y: auto;
@@ -352,16 +528,99 @@
       font-size: 12px;
       width: 155px;
     }
+
+    /* Modales v4: Workspaces y Memoria Histórica */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+    .modal-box {
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      width: 580px;
+      max-width: 95vw;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      overflow: hidden;
+    }
+    .modal-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid #1e293b;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      color: #38bdf8;
+    }
+    .modal-body {
+      padding: 16px 18px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+    .modal-footer {
+      padding: 12px 18px;
+      border-top: 1px solid #1e293b;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      background: #090d16;
+    }
+    .drop-zone {
+      border: 2px dashed #38bdf8;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      background: rgba(56, 189, 248, 0.04);
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 10px;
+    }
+    .drop-zone.drag-over {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: #22c55e;
+    }
+    .file-role-badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .role-cad { background: rgba(56,189,248,0.2); color: #7dd3fc; border: 1px solid #38bdf8; }
+    .role-schem-prim { background: rgba(34,197,94,0.2); color: #86efac; border: 1px solid #22c55e; }
+    .role-schem-alt { background: rgba(245,158,11,0.2); color: #fde68a; border: 1px solid #f59e0b; }
+    .role-aux { background: rgba(168,85,247,0.2); color: #d8b4fe; border: 1px solid #a855f7; }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">
       <span>OpenBoardView AI</span>
-      <span class="badge">.NET 10 + Simulador DC & Térmico</span>
+      <span class="badge">.NET 10 + v4 Persistencia</span>
       <span id="activeSymptomBadge" class="badge" style="background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.4);">Síntoma: PPBUS_G3H (9 pasos)</span>
       <span id="boardTitle" style="color: var(--text-muted); font-weight: 400; font-size: 12px;">Cargando...</span>
     </div>
+
+    <!-- Selector de Espacio de Trabajo v4 y Acciones Rápidas -->
+    <div style="display:flex; align-items:center; gap:8px;">
+      <select id="workspaceSelector" onchange="switchWorkspace(this.value)" style="background:#090d16; color:#38bdf8; font-weight:600; border:1px solid #334155; padding:5px 8px; border-radius:6px; font-size:12px;">
+        <option value="">📁 Espacio Predeterminado</option>
+      </select>
+      <button onclick="openWorkspaceModal()" style="border-color:#38bdf8; color:#38bdf8;" title="Administrar Espacios y Arrastrar y Soltar Archivos">📁 + Espacio</button>
+      <button onclick="openRecordRepairModal()" style="border-color:#22c55e; color:#86efac;" title="Guardar caso resuelto en la memoria histórica">💾 Caso Resuelto</button>
+      <span class="badge" style="background:rgba(56,189,248,0.12); border-color:#0284c7; color:#7dd3fc;" title="Arquitectura Local-First con sincronización en segundo plano">☁️ Local-First</span>
+    </div>
+
     <div class="toolbar">
       <input type="text" id="compSearchInput" list="allBoardSearchList" class="search-box" placeholder="Comp o Red (ej. F7040)" onchange="searchFromInput()" />
       <datalist id="allBoardSearchList"></datalist>
@@ -373,7 +632,8 @@
       <button id="btnThermalView" class="thermal-btn active" onclick="toggleThermalOverlay()">🌡 Cámara Térmica IR</button>
       <button onclick="resetView()">Centrar</button>
     </div>
-    <div class="ws-status">
+    <div class="ws-status" style="display:flex; align-items:center; gap:8px;">
+      <span id="aiEngineBadge" style="font-size: 11px; padding: 2px 10px; border-radius: 9999px; background: rgba(59, 130, 246, 0.15); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.3); font-weight: 500; cursor: default;">🔵 Detectando IA...</span>
       <span class="dot" id="wsDot"></span>
       <span id="wsLabel">WebSocket Activo</span>
     </div>
@@ -435,10 +695,42 @@
 
       <!-- NUEVA FUNCIONALIDAD ADITIVA: Circuit Step Debugger (Modo Laberinto Paso a Paso) -->
       <div class="maze-debugger" id="mazeDebuggerPanel">
-        <div class="maze-header">
-          <span id="mazeHeaderTitle">🧭 Stepper: <span id="symptomLabel" style="color:#4ade80;">PPBUS_G3H</span></span>
-          <span id="mazeStepCounter" style="color:#fef08a;">LISTO</span>
+        <div class="maze-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span id="mazeHeaderTitle">🧭 Stepper: <span id="symptomLabel" style="color:#4ade80;">PPBUS_G3H</span></span>
+            <span id="badgeNodeCount" style="padding:2px 7px; font-size:10px; font-weight:700; background:rgba(56,189,248,0.18); color:#7dd3fc; border-radius:12px; border:1px solid #0284c7;">
+              -- Nodos
+            </span>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px;">
+            <!-- Switch Interactivo ON/OFF (Filtro Capacitores Paralelos v3) -->
+            <div style="display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;" onclick="toggleParallelFilter()" title="Alternar entre 1 capacitor representativo (ON) o todos los capacitores en paralelo para buscar cortos (OFF)">
+              <span style="font-size:11px; color:#94a3b8; font-weight:600;">Filtro Paralelos</span>
+              <button id="btnToggleParallelFilter" type="button" role="switch" aria-checked="true"
+                      style="position:relative; display:inline-flex; height:20px; width:38px; flex-shrink:0; cursor:pointer; border-radius:9999px; border:2px solid transparent; transition:background-color 0.2s ease; background-color:#2563eb; padding:0; outline:none;">
+                <span id="switchKnob" style="pointer-events:none; display:inline-block; height:16px; width:16px; transform:translateX(18px); border-radius:9999px; background-color:#ffffff; box-shadow:0 1px 2px 0 rgba(0, 0, 0, 0.4); transition:transform 0.2s ease;"></span>
+              </button>
+            </div>
+            <span id="mazeStepCounter" style="color:#fef08a; font-weight:700;">LISTO</span>
+          </div>
         </div>
+
+        <!-- Banner de Análisis Autónomo Bajo Demanda (0 Tokens por Defecto) -->
+        <div id="bannerDemandAnalysis" style="display:none; margin-bottom:8px; padding:8px 10px; background:rgba(30,41,59,0.7); border:1px solid #334155; border-radius:6px; font-size:11px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <span style="color:#94a3b8;">Modo:</span> <b id="analysisModeLabel" style="color:#38bdf8;">Topológico Local (0 Tokens)</b>
+            </div>
+            <button id="btnTriggerAiAnalysis" onclick="triggerAiAnalysis()" style="background:#0284c7; border:1px solid #38bdf8; color:#fff; font-size:11px; padding:3px 8px; border-radius:4px; font-weight:600; cursor:pointer;">
+              ⚡ Analizar Esquemático con IA
+            </button>
+          </div>
+          <div id="demandAnalysisStatusText" style="color:#94a3b8; font-size:10px; margin-top:4px;">
+            Deduce secuencia experta de encendido y umbrales de seguridad en frío desde el PDF esquemático (~8k tokens).
+          </div>
+        </div>
+
         <div class="psu-row" style="margin-bottom:8px;">
           <select id="mazePresetSelect" onchange="startMazeDebugger(this.value, 1, null)"
                   style="flex:1; background:#090d16; color:#38bdf8; font-weight:600; border:1px solid #334155; padding:5px 8px; border-radius:4px; font-size:12px;">
@@ -475,6 +767,39 @@
         </div>
       </div>
 
+      <!-- Barra de Estado de IA en el Chat con Chip y Reintentos -->
+      <div class="chat-header-bar">
+        <div class="chat-header-left">
+          <span>💬</span>
+          <span>Asistente IA</span>
+        </div>
+        <div class="chat-header-right">
+          <div id="aiChatStatusChip" class="ai-chip offline" title="Estado de la IA. Selecciona un modelo o haz clic en reintentar">
+            <span class="ai-chip-dot" onclick="onAiChipClicked()"></span>
+            <select id="aiModelSelect" class="ai-model-select" onchange="onModelSelected(this.value)" onclick="event.stopPropagation()" title="Seleccionar modelo de IA para verificar">
+              <option value="gemini-3.5-flash">gemini-3.5-flash (Recomendado)</option>
+              <option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>
+              <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
+              <option value="gemini-flash-latest">gemini-flash-latest</option>
+              <option value="gemini-3.8-flash">gemini-3.8-flash</option>
+            </select>
+            <span id="aiChipStatus" class="ai-chip-badge" onclick="onAiChipClicked()">Offline</span>
+            <button id="btnAiRetry" class="ai-chip-retry" onclick="event.stopPropagation(); retryAiConnection();" title="Reintentar conexión con el modelo seleccionado">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Barra de Configuración Rápida de API Key (si está Offline) -->
+      <div id="apiKeyPopover" class="api-key-popover" style="display: none;">
+        <input type="password" id="inputApiKey" placeholder="Pega tu Gemini API Key (AIzaSy...)" onkeydown="if(event.key==='Enter') saveApiKey()" />
+        <button class="btn-save" onclick="saveApiKey()">Conectar</button>
+        <button class="btn-close" onclick="toggleApiKeyPopover(false)" title="Cerrar">✕</button>
+      </div>
+
       <div class="chat-history" id="chatHistory">
         <div class="msg assistant">
           <strong>Simulador Eléctrico y Agente IA (.NET 10) Activo.</strong><br/>
@@ -507,6 +832,7 @@
     let highlightedNet = null;
     let activeSimulation = null;
     let activeMazeTrace = null;
+    let isParallelFilterActive = true;
     let mazeAutoPlayTimer = null;
     let liftedComponents = new Set();
     let selectedFaultCompId = null;
@@ -546,8 +872,43 @@
         searchListEl.innerHTML = compOpts.concat(netOpts).join('');
       }
 
+      await loadBoardPresets();
       resetView();
       requestAnimationFrame(animateLoop);
+    }
+
+    async function loadBoardPresets() {
+      try {
+        const res = await fetch('/api/board/presets');
+        if (!res.ok) return;
+        const presets = await res.json();
+        const select = document.getElementById('mazePresetSelect');
+        if (!select || !presets || presets.length === 0) return;
+
+        select.innerHTML = '';
+        presets.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.symptomKey;
+          const targetNet = p.symptomKey.includes('PP3V8') ? 'PP3V8_AON' : p.symptomKey.replace(/_MISSING$/i, '');
+          opt.dataset.net = targetNet;
+          opt.textContent = `🎯 Síntoma Curado: ${p.symptomKey} (6 pasos)`;
+          select.appendChild(opt);
+        });
+
+        const defOpts = [
+          { val: 'no carga', net: 'PPBUS_G3H', text: '🔋 Genérico: PPBUS_G3H Ausente' },
+          { val: 'sin backlight', net: 'PPVOUT_SW_LCDBKLT', text: '🖥 Genérico: Backlight Ausente' }
+        ];
+        defOpts.forEach(o => {
+          const opt = document.createElement('option');
+          opt.value = o.val;
+          opt.dataset.net = o.net;
+          opt.textContent = o.text;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        console.debug('Presets no cargados:', e);
+      }
     }
 
     function onSimNetChanged(val) {
@@ -671,7 +1032,12 @@
       const res = await fetch('/api/board/debugger/trace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ queryOrSymptom, activeStepNumber, blockedAtStepNumber })
+        body: JSON.stringify({ 
+          queryOrSymptom, 
+          activeStepNumber, 
+          blockedAtStepNumber,
+          filterParallelCapacitors: isParallelFilterActive 
+        })
       });
       const trace = await res.json();
       applyMazeTrace(trace);
@@ -769,13 +1135,70 @@
     function applyMazeTrace(trace, intent = null) {
       if (!trace || !trace.steps || trace.steps.length === 0) return;
       activeMazeTrace = trace;
+      activeMazeTrace.filteredSteps = trace.filteredSteps || trace.steps;
+      activeMazeTrace.rawSteps = trace.rawSteps || trace.steps;
+
+      activeMazeTrace.steps = isParallelFilterActive ? activeMazeTrace.filteredSteps : activeMazeTrace.rawSteps;
+      updateParallelFilterUI();
+
       const primaryNet = trace.targetNet || (intent && intent.primary_net) || (trace.steps[0] && trace.steps[0].outputNet) || 'PPBUS_G3H';
       syncUiWithActiveNet(primaryNet, trace, intent);
       renderMazeStepUI();
     }
 
+    function toggleParallelFilter() {
+      isParallelFilterActive = !isParallelFilterActive;
+      updateParallelFilterUI();
+
+      if (activeMazeTrace) {
+        const targetSteps = isParallelFilterActive ? activeMazeTrace.filteredSteps : activeMazeTrace.rawSteps;
+        if (targetSteps && targetSteps.length > 0) {
+          activeMazeTrace.steps = targetSteps;
+          activeMazeTrace.currentStepNumber = Math.min(activeMazeTrace.currentStepNumber || 1, targetSteps.length);
+          if (activeMazeTrace.blockedAtStepNumber) {
+            activeMazeTrace.blockedAtStepNumber = Math.min(activeMazeTrace.blockedAtStepNumber, targetSteps.length);
+          }
+          renderMazeStepUI();
+        }
+      }
+    }
+
+    function updateParallelFilterUI() {
+      const btn = document.getElementById('btnToggleParallelFilter');
+      const knob = document.getElementById('switchKnob');
+      const badge = document.getElementById('badgeNodeCount');
+
+      if (btn && knob) {
+        if (isParallelFilterActive) {
+          btn.style.backgroundColor = '#2563eb';
+          btn.setAttribute('aria-checked', 'true');
+          knob.style.transform = 'translateX(18px)';
+        } else {
+          btn.style.backgroundColor = '#475569';
+          btn.setAttribute('aria-checked', 'false');
+          knob.style.transform = 'translateX(2px)';
+        }
+      }
+
+      if (badge && activeMazeTrace && activeMazeTrace.steps) {
+        const count = activeMazeTrace.steps.length;
+        if (isParallelFilterActive) {
+          badge.textContent = `${count} Nodos (Filtrado)`;
+          badge.style.background = 'rgba(56,189,248,0.18)';
+          badge.style.borderColor = '#0284c7';
+          badge.style.color = '#7dd3fc';
+        } else {
+          badge.textContent = `${count} Nodos (Expandido)`;
+          badge.style.background = 'rgba(234,179,8,0.18)';
+          badge.style.borderColor = '#ca8a04';
+          badge.style.color = '#fde047';
+        }
+      }
+    }
+
     function renderMazeStepUI() {
       if (!activeMazeTrace) return;
+      updateParallelFilterUI();
       const steps = activeMazeTrace.steps;
       const currIdx = Math.min(Math.max(1, activeMazeTrace.currentStepNumber), steps.length);
       const step = steps.find(s => s.stepNumber === currIdx) || steps[0];
@@ -805,6 +1228,21 @@
       const branchBadgeHtml = step.branch
         ? `<div style="margin-bottom:4px;"><span style="background:rgba(56,189,248,0.16); border:1px solid #38bdf8; color:#7dd3fc; padding:1px 6px; border-radius:4px; font-size:10px; font-weight:700;">🌿 ${step.branch}</span></div>`
         : '';
+      const probBadgeHtml = (step.failureProbability && step.failureProbability > 0)
+        ? `<div style="margin-top:5px; margin-bottom:5px; padding:4px 8px; background:rgba(239,68,68,0.22); border:1px solid #ef4444; border-radius:5px; color:#fca5a5; font-size:11px; font-weight:700;">
+            ⚡ Probabilidad Histórica de Falla: ${step.failureProbability.toFixed(0)}% (${step.historicalFailureCount} casos en taller)
+          </div>`
+        : '';
+      const parallelCapBadgeHtml = (step.omittedParallelCount && step.omittedParallelCount > 0)
+        ? `<div style="margin-top:5px; margin-bottom:5px; padding:4px 8px; background:rgba(56,189,248,0.15); border:1px solid #0284c7; border-radius:5px; color:#7dd3fc; font-size:11px;">
+             ⚡ <b>${step.componentId}</b> (+${step.omittedParallelCount} capacitores en paralelo omitidos en ${step.outputNet})
+             <span style="display:block; font-size:10px; color:#94a3b8; margin-top:2px;">Riel limpio para verificación de voltaje. Desactiva 'Filtro Paralelos' en el switch si buscas un cortocircuito a tierra.</span>
+           </div>`
+        : (step.notes && step.notes.includes('Modo Expandido'))
+          ? `<div style="margin-top:5px; margin-bottom:5px; padding:3px 7px; background:rgba(234,179,8,0.15); border:1px solid #ca8a04; border-radius:4px; color:#fde047; font-size:10.5px;">
+               🔍 <b>Modo Expandido:</b> ${step.componentId} (Capacitor individual en ${step.outputNet} para prueba de corto)
+             </div>`
+          : '';
       const sourceLabelHtml = step.dataSource === 'inferred'
         ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.15); border:1px solid #f59e0b; border-radius:4px; color:#fde68a; font-size:10.5px;">⚠ <b>Voltaje estimado</b> a partir del nombre de la red (no leído del esquemático). Verifícalo en el PDF antes de concluir.</div>`
         : step.dataSource === 'bridged'
@@ -813,6 +1251,8 @@
 
       document.getElementById('mazeStepDetails').innerHTML = `
         ${branchBadgeHtml}
+        ${probBadgeHtml}
+        ${parallelCapBadgeHtml}
         <div style="font-weight:700; color:${blockedStep === step.stepNumber ? '#ef4444' : '#38bdf8'}; margin-bottom:3px;">
           ${step.stageTitle}
         </div>
@@ -824,6 +1264,9 @@
         ${step.componentFound === false ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(239,68,68,0.15); border:1px solid #ef4444; border-radius:4px; color:#fecaca; font-size:10.5px;">⚠ <b>${step.componentId}</b> no existe en la placa cargada; la posición mostrada es aproximada.</div>` : ''}
         ${(activeMazeTrace.warnings && activeMazeTrace.warnings.length && step.stepNumber === 1) ? `<div style="margin-top:5px; padding:4px 6px; background:rgba(245,158,11,0.12); border:1px solid #92400e; border-radius:4px; color:#fcd34d; font-size:10.5px;">ℹ ${activeMazeTrace.warnings[0]}</div>` : ''}
         ${blockedStep === step.stepNumber ? `<div style="margin-top:6px; padding:5px; background:rgba(239,68,68,0.18); border:1px solid #ef4444; border-radius:4px; color:#fecaca; font-size:11px;"><b>🛑 Diagnóstico de Bloqueo:</b> ${step.failDiagnosis}</div>` : ''}
+        <div style="margin-top:8px;">
+          <button onclick="openRecordRepairModal('${step.componentId}', '${step.outputNet}')" style="border-color:#22c55e; color:#86efac; font-size:11px; padding:3px 7px;">💾 Marcar como Falla Resuelta</button>
+        </div>
       `;
 
       document.getElementById('lcdVolt').textContent = blockedStep === step.stepNumber
@@ -951,6 +1394,15 @@
         `<button style="font-size:10px; padding:2px 6px; margin:2px;" onclick="document.getElementById('simNetSelect').value='${n}'; onSimNetChanged('${n}');">${n}</button>`
       ).join('');
 
+      const pinsListHtml = comp.pins && comp.pins.length > 0
+        ? `<div style="margin-top:6px; font-size:11px;">
+            <b>Pines (${comp.pins.length}):</b>
+            <div style="display:flex; flex-wrap:wrap; gap:4px; max-height:85px; overflow-y:auto; padding:4px; border:1px solid #1e293b; border-radius:4px; background:#05080f; margin-top:2px;">
+              ${comp.pins.map(p => `<span style="padding:2px 5px; border-radius:3px; background:#0f172a; cursor:pointer;" onclick="highlightedNet='${p.net.toUpperCase()}'; onSimNetChanged('${p.net}');" title="Clic para resaltar red ${p.net}"><b style="color:${p.num==1?'#fef08a':'#94a3b8'};">P${p.num}:</b> <span style="color:#38bdf8;">${p.net}</span></span>`).join('')}
+            </div>
+           </div>`
+        : '';
+
       document.getElementById('inspectorBody').innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
           <span style="color: var(--text-main); font-weight: 700; font-size: 14px;">
@@ -959,6 +1411,7 @@
           <span class="badge">${comp.quadrant} • ${comp.side}</span>
         </div>
         <div style="margin-top:4px;"><b>Redes (clic para cargar en fuente):</b><br/>${netPillsHtml}</div>
+        ${pinsListHtml}
         <div style="display:flex; gap:6px; margin-top:8px;">
           <button class="btn-sim-fire" onclick="simulateFaultOnComp('${comp.id}', '${nonGndNet}')">🔥 Simular Corto en ${nonGndNet}</button>
           <button class="btn-lift" onclick="toggleLiftFuse('${comp.id}')">${isLifted ? '✅ Resoldar a Placa' : '🔧 Levantar Componente'}</button>
@@ -1057,6 +1510,46 @@
           ctx.moveTo(p2.x, p1.y); ctx.lineTo(p1.x, p2.y);
           ctx.stroke();
           ctx.restore();
+        }
+
+        // 3.b Dibujo de Pines individuales (pads circulares y numeración)
+        if (comp.pins && comp.pins.length > 0 && (cam.zoom > 0.08 || isSelected)) {
+          for (const pin of comp.pins) {
+            const pPin = boardToScreen(pin.x, pin.y);
+            const isPinHighlighted = highlightedNet && pin.net && pin.net.toUpperCase() === highlightedNet;
+            const isGnd = pin.net && pin.net.toUpperCase() === 'GND';
+
+            const padR = Math.max(1.8, Math.min(10, 7.5 * cam.zoom));
+
+            ctx.beginPath();
+            ctx.arc(pPin.x, pPin.y, padR, 0, Math.PI * 2);
+
+            if (isPinHighlighted) {
+              ctx.fillStyle = '#22c55e';
+              ctx.shadowColor = '#22c55e';
+              ctx.shadowBlur = 6;
+            } else if (isGnd) {
+              ctx.fillStyle = 'rgba(100, 116, 139, 0.55)';
+              ctx.shadowBlur = 0;
+            } else {
+              ctx.fillStyle = comp.side === 'Top' ? 'rgba(56, 189, 248, 0.75)' : 'rgba(168, 85, 247, 0.75)';
+              ctx.shadowBlur = 0;
+            }
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            if (pin.num === '1' || pin.num === 1) {
+              ctx.strokeStyle = '#fef08a';
+              ctx.lineWidth = 1.2;
+              ctx.stroke();
+            }
+
+            if (cam.zoom > 0.42 || isSelected) {
+              ctx.fillStyle = '#f8fafc';
+              ctx.font = 'bold 8px monospace';
+              ctx.fillText(pin.num, pPin.x - 3, pPin.y - padR - 2);
+            }
+          }
         }
 
         if (cam.zoom > 0.24 || isSelected) {
@@ -1280,6 +1773,13 @@
       );
       if (hit) {
         highlightedCompId = hit.id;
+        if (hit.pins && hit.pins.length > 0) {
+          const pinHit = hit.pins.find(p => Math.hypot(p.x - pt.x, p.y - pt.y) <= 35);
+          if (pinHit && pinHit.net) {
+            highlightedNet = pinHit.net.toUpperCase();
+            onSimNetChanged(pinHit.net);
+          }
+        }
         updateInspector(hit);
       }
     });
@@ -1302,9 +1802,27 @@
         document.getElementById('wsDot').style.background = '#22c55e';
         document.getElementById('wsLabel').textContent = 'WebSocket Activo';
       };
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         try {
           const cmd = JSON.parse(event.data);
+          if (cmd.action === 'workspace_switched') {
+            loadBoardGeometry();
+            loadWorkspaces();
+            return;
+          }
+          if (cmd.action === 'schematic_analysis_status') {
+            updateDemandAnalysisBanner('Processing', cmd.message);
+            return;
+          }
+          if (cmd.action === 'schematic_analysis_completed') {
+            updateDemandAnalysisBanner('Completed', cmd.message);
+            await loadBoardPresets();
+            const select = document.getElementById('mazePresetSelect');
+            if (select && select.value) {
+              startMazeDebugger(select.value, 1, null);
+            }
+            return;
+          }
           if (cmd.simulation) {
             applySimulationResult(cmd.simulation);
           }
@@ -1382,8 +1900,715 @@
       chatHistory.scrollTop = chatHistory.scrollHeight;
     }
 
-    loadBoardGeometry();
-    connectWebSocket();
+    // ==========================================
+    // Módulos v4: Workspaces, Drag & Drop y Reparaciones
+    // ==========================================
+    let stagedWsFiles = [];
+
+    async function loadWorkspaces() {
+      try {
+        const res = await fetch('/api/workspaces');
+        if (!res.ok) return;
+        const list = await res.json();
+        const selector = document.getElementById('workspaceSelector');
+        selector.innerHTML = '';
+
+        if (!list || list.length === 0) {
+          selector.innerHTML = '<option value="">📁 Espacio Predeterminado</option>';
+          return;
+        }
+
+        list.forEach(w => {
+          const opt = document.createElement('option');
+          opt.value = w.workspaceId;
+          opt.textContent = `📁 ${w.name} (${w.fileCount} archivos)`;
+          selector.appendChild(opt);
+        });
+
+        // Sincronizar el selector con el espacio activo actual en el servidor
+        try {
+          const activeRes = await fetch('/api/workspaces/active');
+          if (activeRes.ok && activeRes.status !== 204) {
+            const activeWs = await activeRes.json();
+            if (activeWs && activeWs.workspaceId) {
+              selector.value = activeWs.workspaceId;
+              checkWorkspaceAnalysisStatus(activeWs.workspaceId);
+            }
+          }
+        } catch {}
+
+        renderWorkspaceList(list);
+      } catch (e) {
+        console.warn('No se pudieron cargar los workspaces:', e);
+      }
+    }
+
+    async function checkWorkspaceAnalysisStatus(wsId) {
+      const banner = document.getElementById('bannerDemandAnalysis');
+      if (!banner) return;
+      if (!wsId) {
+        banner.style.display = 'none';
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/workspaces/${wsId}/analysis-status`);
+        if (!res.ok) {
+          banner.style.display = 'none';
+          return;
+        }
+        const data = await res.json();
+        updateDemandAnalysisBanner(data.status, data.summary);
+      } catch (e) {
+        banner.style.display = 'none';
+      }
+    }
+
+    function updateDemandAnalysisBanner(status, summary) {
+      const banner = document.getElementById('bannerDemandAnalysis');
+      const modeLbl = document.getElementById('analysisModeLabel');
+      const btn = document.getElementById('btnTriggerAiAnalysis');
+      const text = document.getElementById('demandAnalysisStatusText');
+      if (!banner || !modeLbl || !btn || !text) return;
+
+      banner.style.display = 'block';
+
+      if (status === 'Completed') {
+        modeLbl.textContent = 'Secuencia Experta Activa (IA)';
+        modeLbl.style.color = '#4ade80';
+        btn.disabled = true;
+        btn.textContent = '✔ Generado';
+        btn.style.background = '#15803d';
+        btn.style.borderColor = '#22c55e';
+        text.textContent = summary || 'Secuencia lógica de encendido y umbrales de frío cargados en el Stepper.';
+      } else if (status === 'Processing' || status === 'Queued') {
+        modeLbl.textContent = 'Analizando Esquemático...';
+        modeLbl.style.color = '#facc15';
+        btn.disabled = true;
+        btn.textContent = '⏳ Procesando...';
+        btn.style.background = '#854d0e';
+        btn.style.borderColor = '#eab308';
+        text.textContent = summary || 'Extrayendo páginas clave de potencia y consultando LLM...';
+      } else if (status === 'Failed') {
+        modeLbl.textContent = 'Modo Topológico Local (0 Tokens)';
+        modeLbl.style.color = '#f87171';
+        btn.disabled = false;
+        btn.textContent = '⚡ Reintentar Análisis con IA';
+        btn.style.background = '#b91c1c';
+        btn.style.borderColor = '#f87171';
+        text.textContent = summary || 'Falló el análisis previo. Puedes reintentar.';
+      } else {
+        // None, Pending
+        modeLbl.textContent = 'Topológico Local (0 Tokens)';
+        modeLbl.style.color = '#38bdf8';
+        btn.disabled = false;
+        btn.textContent = '⚡ Analizar Esquemático con IA';
+        btn.style.background = '#0284c7';
+        btn.style.borderColor = '#38bdf8';
+        text.textContent = summary || 'Deduce secuencia experta de encendido y umbrales de seguridad en frío desde el PDF esquemático (~8k tokens).';
+      }
+    }
+
+    async function triggerAiAnalysis() {
+      const selector = document.getElementById('workspaceSelector');
+      const wsId = selector ? selector.value : null;
+      if (!wsId) {
+        alert('Selecciona un espacio de trabajo primero.');
+        return;
+      }
+
+      const btn = document.getElementById('btnTriggerAiAnalysis');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Iniciando...';
+      }
+
+      try {
+        const res = await fetch(`/api/workspaces/${wsId}/trigger-analysis`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Error del servidor' }));
+          throw new Error(err.message || err.error || 'Error al iniciar análisis');
+        }
+        updateDemandAnalysisBanner('Processing', 'Análisis en segundo plano iniciado...');
+      } catch (e) {
+        alert('Error al iniciar análisis: ' + e.message);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '⚡ Analizar Esquemático con IA';
+        }
+      }
+    }
+
+    function renderWorkspaceList(list) {
+      const container = document.getElementById('wsListContainer');
+      if (!container) return;
+      if (!list || list.length === 0) {
+        container.innerHTML = '<div style="color:#64748b; font-size:11px;">No hay espacios creados aún.</div>';
+        return;
+      }
+      container.innerHTML = list.map(w => `
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border-bottom:1px solid #1e293b;">
+          <div>
+            <b style="color:#38bdf8;">${w.name}</b>
+            <span style="font-size:11px; color:#94a3b8; margin-left:6px;">(${w.fileCount} archivos)</span>
+            ${w.description ? `<div style="font-size:11px; color:#64748b;">${w.description}</div>` : ''}
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button onclick="selectAndCloseWorkspace('${w.workspaceId}')" style="font-size:10px; padding:2px 6px;">Cargar</button>
+            <button onclick="deleteWorkspace('${w.workspaceId}')" style="font-size:10px; padding:2px 6px; border-color:#ef4444; color:#fca5a5;">🗑</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function selectAndCloseWorkspace(wsId) {
+      document.getElementById('workspaceSelector').value = wsId;
+      await switchWorkspace(wsId);
+      closeWorkspaceModal();
+    }
+
+    async function switchWorkspace(wsId) {
+      if (!wsId) return;
+      try {
+        const res = await fetch(`/api/workspaces/active/${wsId}`, { method: 'POST' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: 'Error del servidor' }));
+          alert(err.error || 'Error al cambiar de espacio de trabajo');
+          return;
+        }
+        await loadBoardGeometry();
+        const searchInput = document.getElementById('compSearchInput');
+        if (searchInput) searchInput.value = '';
+        highlightedCompId = null;
+        highlightedNet = null;
+        activeSimulation = null;
+        activeMazeTrace = null;
+        const sel = document.getElementById('workspaceSelector');
+        if (sel && sel.value !== wsId) sel.value = wsId;
+        await checkWorkspaceAnalysisStatus(wsId);
+      } catch (e) {
+        console.error('Error al cambiar de espacio:', e);
+      }
+    }
+
+    async function deleteWorkspace(wsId) {
+      if (!confirm('¿Eliminar este espacio de trabajo y sus archivos?')) return;
+      try {
+        await fetch(`/api/workspaces/${wsId}`, { method: 'DELETE' });
+        await loadWorkspaces();
+      } catch (e) {
+        alert('Error al eliminar: ' + e.message);
+      }
+    }
+
+    function openWorkspaceModal() {
+      document.getElementById('workspaceModalBackdrop').style.display = 'flex';
+      loadWorkspaces();
+    }
+
+    function closeWorkspaceModal() {
+      document.getElementById('workspaceModalBackdrop').style.display = 'none';
+      stagedWsFiles = [];
+      renderStagedFiles();
+    }
+
+    function handleWsFilesSelected(files) {
+      for (const f of files) {
+        if (!stagedWsFiles.some(existing => existing.name === f.name && existing.size === f.size)) {
+          stagedWsFiles.push(f);
+        }
+      }
+      renderStagedFiles();
+    }
+
+    function classifyFileRole(fileName) {
+      const ext = fileName.slice((fileName.lastIndexOf(".") - 1 >>> 0) + 2).toLowerCase();
+      const lower = fileName.toLowerCase();
+      if (['brd', 'pcb', 'cad', 'fz', 'bdv'].includes(ext)) return { role: 'PHYSICAL_CAD', cls: 'role-cad' };
+      if (ext === 'pdf') {
+        if (lower.includes('dimension') || lower.includes('manual') || lower.includes('layout'))
+          return { role: 'AUX_DOC', cls: 'role-aux' };
+        if (lower.includes('schematic') || lower.includes('esquematico') || lower.includes('diagram')) {
+          if (lower.includes('rev') || lower.includes('old') || lower.includes('apr'))
+            return { role: 'SCHEMATIC_ALT', cls: 'role-schem-alt' };
+          return { role: 'SCHEMATIC_PRIMARY', cls: 'role-schem-prim' };
+        }
+        return { role: 'SCHEMATIC_PRIMARY', cls: 'role-schem-prim' };
+      }
+      return { role: 'AUX_DOC', cls: 'role-aux' };
+    }
+
+    function renderStagedFiles() {
+      const container = document.getElementById('wsStagedFilesList');
+      if (!container) return;
+      if (stagedWsFiles.length === 0) {
+        container.innerHTML = '';
+        return;
+      }
+      container.innerHTML = stagedWsFiles.map((f, i) => {
+        const info = classifyFileRole(f.name);
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; border:1px solid #1e293b; padding:4px 8px; border-radius:4px; font-size:11px;">
+            <span>📄 ${f.name} <span style="color:#64748b;">(${(f.size/1024).toFixed(0)} KB)</span></span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span class="file-role-badge ${info.cls}">${info.role}</span>
+              <button onclick="removeStagedFile(${i})" style="padding:1px 5px; font-size:10px; border:none; background:transparent; color:#ef4444;">✕</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function removeStagedFile(idx) {
+      stagedWsFiles.splice(idx, 1);
+      renderStagedFiles();
+    }
+
+    async function submitNewWorkspace() {
+      const name = document.getElementById('newWsName').value.trim();
+      const desc = document.getElementById('newWsDesc').value.trim();
+      if (!name) { alert('Ingresa un nombre para el espacio.'); return; }
+      if (stagedWsFiles.length === 0) { alert('Agrega al menos un archivo (.brd o .pdf).'); return; }
+
+      const btn = document.getElementById('btnSubmitWs');
+      btn.disabled = true;
+      btn.textContent = 'Subiendo...';
+
+      const formData = new FormData();
+      formData.append('name', name);
+      if (desc) formData.append('description', desc);
+      const autoAnalyze = document.getElementById('chkAutoAnalyze') ? document.getElementById('chkAutoAnalyze').checked : false;
+      formData.append('autoAnalyze', autoAnalyze);
+      for (const f of stagedWsFiles) {
+        formData.append('files', f);
+      }
+
+      try {
+        const res = await fetch('/api/workspaces/upload', {
+          method: 'POST',
+          body: formData
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const created = await res.json();
+        alert(`¡Espacio '${created.name}' creado con éxito con ${created.files.length} archivos!`);
+        document.getElementById('newWsName').value = '';
+        document.getElementById('newWsDesc').value = '';
+        if (document.getElementById('chkAutoAnalyze')) document.getElementById('chkAutoAnalyze').checked = false;
+        stagedWsFiles = [];
+        closeWorkspaceModal();
+        await loadWorkspaces();
+        await switchWorkspace(created.workspaceId);
+      } catch (e) {
+        alert('Error al crear espacio: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Crear y Subir Archivos';
+      }
+    }
+
+    // Modal de Reparación Resuelta
+    function openRecordRepairModal(comp = null, net = null) {
+      document.getElementById('repairModalBackdrop').style.display = 'flex';
+      const board = boardData ? (boardData.fileName || '820-3115-B') : '820-3115-B';
+      document.getElementById('repBoardId').value = board.replace(/\.brd$/i, '');
+      const presetSelect = document.getElementById('mazePresetSelect');
+      const symptom = (presetSelect && presetSelect.value) ? presetSelect.value.toUpperCase().replace(/\s+/g, '_') : 'PPBUS_G3H_MISSING';
+      document.getElementById('repSymptomKey').value = symptom;
+      document.getElementById('repFaultyComp').value = comp || highlightedCompId || 'C7513';
+    }
+
+    function closeRecordRepairModal() {
+      document.getElementById('repairModalBackdrop').style.display = 'none';
+    }
+
+    async function submitRecordRepair() {
+      const boardId = document.getElementById('repBoardId').value.trim();
+      const symptomKey = document.getElementById('repSymptomKey').value.trim();
+      const faultyComp = document.getElementById('repFaultyComp').value.trim();
+      const faultType = document.getElementById('repFaultType').value;
+      const impedance = parseFloat(document.getElementById('repImpedance').value) || null;
+      const voltage = parseFloat(document.getElementById('repVoltage').value) || null;
+      const notes = document.getElementById('repNotes').value.trim();
+
+      if (!boardId || !symptomKey || !faultyComp) {
+        alert('Placa, síntoma y componente son campos requeridos.');
+        return;
+      }
+
+      const wsSelector = document.getElementById('workspaceSelector');
+      const wsId = (wsSelector && wsSelector.value) ? wsSelector.value : 'default_ws';
+
+      const payload = {
+        workspaceId: wsId,
+        boardId: boardId,
+        symptomKey: symptomKey,
+        faultyComponent: faultyComp,
+        faultType: faultType,
+        measuredImpedance: impedance,
+        measuredVoltage: voltage,
+        notes: notes
+      };
+
+      try {
+        const res = await fetch('/api/repairs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error(await res.text());
+        alert(`¡Reparación registrada con éxito! La falla en ${faultyComp} alimentará el reordenamiento predictivo del Stepper.`);
+        closeRecordRepairModal();
+      } catch (e) {
+        alert('Error al registrar reparación: ' + e.message);
+      }
+    }
+
+    // Configuración de Drag & Drop
+    const dropZone = document.getElementById('wsDropZone');
+    if (dropZone) {
+      ['dragenter', 'dragover'].forEach(name => {
+        dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+      });
+      ['dragleave', 'drop'].forEach(name => {
+        dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.remove('drag-over'); });
+      });
+      dropZone.addEventListener('drop', e => {
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files.length) {
+          handleWsFilesSelected(dt.files);
+        }
+      });
+    }
+
+    let currentAiStatus = null;
+
+    async function checkAiConnection(forceRetry = false) {
+      const chip = document.getElementById('aiChatStatusChip');
+      const select = document.getElementById('aiModelSelect');
+      const statusEl = document.getElementById('aiChipStatus');
+      const retryBtn = document.getElementById('btnAiRetry');
+
+      if (chip) {
+        chip.classList.remove('online', 'offline');
+        chip.classList.add('probing');
+        if (statusEl) statusEl.textContent = 'Probando...';
+        if (retryBtn) retryBtn.classList.add('spinning');
+      }
+
+      try {
+        const url = forceRetry ? '/api/agent/capabilities/retry' : '/api/agent/capabilities';
+        const method = forceRetry ? 'POST' : 'GET';
+        const res = await fetch(url, { method });
+        if (res.ok) {
+          const cap = await res.json();
+          currentAiStatus = cap;
+          renderAiStatus(cap);
+        } else {
+          renderAiOffline('Error al consultar estado de IA');
+        }
+      } catch (e) {
+        renderAiOffline('Sin conexión con el servidor local');
+      } finally {
+        if (retryBtn) retryBtn.classList.remove('spinning');
+        if (chip) chip.classList.remove('probing');
+      }
+    }
+
+    async function onModelSelected(modelName) {
+      if (!modelName) return;
+      const chip = document.getElementById('aiChatStatusChip');
+      const statusEl = document.getElementById('aiChipStatus');
+      const retryBtn = document.getElementById('btnAiRetry');
+
+      if (chip) {
+        chip.classList.remove('online', 'offline');
+        chip.classList.add('probing');
+        if (statusEl) statusEl.textContent = 'Probando...';
+        if (retryBtn) retryBtn.classList.add('spinning');
+      }
+
+      try {
+        const res = await fetch('/api/agent/capabilities/model', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelName })
+        });
+        if (res.ok) {
+          const cap = await res.json();
+          currentAiStatus = cap;
+          renderAiStatus(cap);
+        } else {
+          renderAiOffline(`Error al cambiar a ${modelName}`);
+        }
+      } catch (e) {
+        renderAiOffline('Error de conexión');
+      } finally {
+        if (retryBtn) retryBtn.classList.remove('spinning');
+        if (chip) chip.classList.remove('probing');
+      }
+    }
+
+    function renderAiStatus(cap) {
+      const chip = document.getElementById('aiChatStatusChip');
+      const select = document.getElementById('aiModelSelect');
+      const statusEl = document.getElementById('aiChipStatus');
+      const topBadge = document.getElementById('aiEngineBadge');
+
+      const isOnline = cap.isOnline === true;
+      const modelName = cap.model || 'gemini-2.5-flash';
+
+      if (select) {
+        if (cap.availableModels && cap.availableModels.length > 0) {
+          const currentSelected = modelName;
+          select.innerHTML = '';
+          cap.availableModels.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            if (m.toLowerCase() === currentSelected.toLowerCase()) opt.selected = true;
+            select.appendChild(opt);
+          });
+          select.value = currentSelected;
+        } else {
+          select.value = modelName;
+        }
+      }
+
+      if (chip) {
+        chip.classList.remove('online', 'offline', 'probing');
+        if (isOnline) {
+          chip.classList.add('online');
+          if (statusEl) statusEl.textContent = 'Online';
+          chip.title = `Conectado a ${modelName} (${cap.provider}). Clic para verificar o cambiar.`;
+        } else {
+          chip.classList.add('offline');
+          if (statusEl) statusEl.textContent = 'Offline';
+          chip.title = `${cap.errorMessage || 'Sin conexión o API Key inválida'}. Clic para reintentar o configurar.`;
+        }
+      }
+
+      if (topBadge) {
+        if (isOnline) {
+          topBadge.textContent = `🟢 ${modelName}`;
+          topBadge.style.color = '#4ade80';
+          topBadge.style.background = 'rgba(34, 197, 94, 0.15)';
+          topBadge.style.borderColor = 'rgba(34, 197, 94, 0.4)';
+          topBadge.title = cap.description || '';
+        } else {
+          topBadge.textContent = `🔴 ${modelName} (Offline)`;
+          topBadge.style.color = '#f87171';
+          topBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+          topBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+          topBadge.title = `${cap.errorMessage || 'Offline'} - Modo Autónomo Local determinista activo.`;
+        }
+      }
+    }
+
+    function renderAiOffline(reason) {
+      const chip = document.getElementById('aiChatStatusChip');
+      const statusEl = document.getElementById('aiChipStatus');
+      const topBadge = document.getElementById('aiEngineBadge');
+
+      if (chip) {
+        chip.classList.remove('online', 'probing');
+        chip.classList.add('offline');
+        if (statusEl) statusEl.textContent = 'Offline';
+        chip.title = `${reason}. Clic para reintentar.`;
+      }
+      if (topBadge) {
+        topBadge.textContent = '🔴 IA Offline';
+        topBadge.style.color = '#f87171';
+        topBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+        topBadge.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+      }
+    }
+
+    async function retryAiConnection() {
+      await checkAiConnection(true);
+    }
+
+    function onAiChipClicked() {
+      if (!currentAiStatus || !currentAiStatus.isOnline) {
+        toggleApiKeyPopover();
+      } else {
+        retryAiConnection();
+      }
+    }
+
+    function toggleApiKeyPopover(forceState) {
+      const popover = document.getElementById('apiKeyPopover');
+      if (!popover) return;
+      const isHidden = popover.style.display === 'none' || !popover.style.display;
+      const show = (forceState !== undefined) ? forceState : isHidden;
+      popover.style.display = show ? 'flex' : 'none';
+      if (show) {
+        const inp = document.getElementById('inputApiKey');
+        if (inp) {
+          inp.focus();
+          inp.select();
+        }
+      }
+    }
+
+    async function saveApiKey() {
+      const inp = document.getElementById('inputApiKey');
+      const key = inp ? inp.value.trim() : '';
+      if (!key) {
+        alert('Por favor ingresa una API Key válida de Google Gemini.');
+        return;
+      }
+
+      const saveBtn = document.querySelector('.api-key-popover button.btn-save');
+      if (saveBtn) saveBtn.textContent = 'Probando...';
+
+      try {
+        const res = await fetch('/api/agent/capabilities/apikey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: key })
+        });
+
+        if (res.ok) {
+          const cap = await res.json();
+          currentAiStatus = cap;
+          renderAiStatus(cap);
+
+          if (cap.isOnline) {
+            toggleApiKeyPopover(false);
+            if (inp) inp.value = '';
+            const chatHistory = document.getElementById('chatHistory');
+            if (chatHistory) {
+              chatHistory.innerHTML += `<div class="msg assistant">✅ <b>Conexión Exitosa:</b> Se validó la API Key con Google Gemini y el modelo <b>${cap.model}</b> está activo y listo para responder preguntas técnicas.</div>`;
+              chatHistory.scrollTop = chatHistory.scrollHeight;
+            }
+          } else {
+            alert(`No se pudo conectar con la API de Google: ${cap.errorMessage || 'Error desconocido'}`);
+          }
+        } else {
+          const errData = await res.json().catch(() => ({}));
+          alert(`Error: ${errData.error || res.statusText}`);
+        }
+      } catch (e) {
+        alert('Error al comunicarse con el servidor: ' + e.message);
+      } finally {
+        if (saveBtn) saveBtn.textContent = 'Conectar';
+      }
+    }
+
+    const loadAiCapabilities = checkAiConnection;
+
+    async function initApp() {
+      loadAiCapabilities();
+      await loadWorkspaces();
+      await loadBoardGeometry();
+      const sel = document.getElementById('workspaceSelector');
+      if (sel && sel.value) {
+        await checkWorkspaceAnalysisStatus(sel.value);
+      }
+      connectWebSocket();
+    }
+    initApp();
   </script>
+
+  <!-- Modal 1: Espacios de Trabajo & Drag & Drop Multi-Archivo (v4) -->
+  <div class="modal-backdrop" id="workspaceModalBackdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span>📁 Gestión de Espacios de Trabajo (Local-First v4)</span>
+        <button onclick="closeWorkspaceModal()" style="border:none; background:transparent; color:#94a3b8; font-size:16px;">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4 style="margin-bottom:8px; color:#f8fafc;">Espacios Existentes</h4>
+        <div id="wsListContainer" style="margin-bottom:16px; max-height:160px; overflow-y:auto; border:1px solid #1e293b; border-radius:6px; padding:8px; background:#090d16;">
+          <div style="color:#64748b;">Cargando espacios...</div>
+        </div>
+
+        <h4 style="margin-bottom:8px; color:#f8fafc;">+ Crear Nuevo Espacio con Múltiples Archivos</h4>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <input type="text" id="newWsName" placeholder="Nombre (ej. MacBook Pro A1278 820-3115-B)" style="background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+          <input type="text" id="newWsDesc" placeholder="Descripción / Notas del cliente o falla (opcional)" style="background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+          
+          <div class="drop-zone" id="wsDropZone" onclick="document.getElementById('wsFileInput').click()">
+            <div style="font-size:22px; margin-bottom:4px;">📥</div>
+            <div><b>Arrastra y suelta tus archivos aquí</b> o haz clic para examinar</div>
+            <div style="font-size:11px; color:#94a3b8; margin-top:4px;">Formatos soportados: .brd, .pcb, .cad, .fz, .bdv, .pdf (Esquemáticos y manuales)</div>
+            <input type="file" id="wsFileInput" multiple style="display:none;" onchange="handleWsFilesSelected(this.files)" />
+          </div>
+
+          <div id="wsStagedFilesList" style="margin-top:8px; display:flex; flex-direction:column; gap:4px; max-height:120px; overflow-y:auto;"></div>
+
+          <div style="display:flex; align-items:center; gap:8px; margin-top:8px; padding:8px 10px; background:rgba(56,189,248,0.06); border:1px solid #1e293b; border-radius:6px;">
+            <input type="checkbox" id="chkAutoAnalyze" style="cursor:pointer;" />
+            <label for="chkAutoAnalyze" style="font-size:11px; color:#cbd5e1; cursor:pointer;">
+              ⚡ <b>Analizar esquemático con IA al crear</b> <span style="color:#94a3b8;">(~8k tokens optimizados vía PdfPig. Si se desmarca: 0 tokens / Modo local)</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="closeWorkspaceModal()">Cancelar</button>
+        <button onclick="submitNewWorkspace()" id="btnSubmitWs" style="background:#0284c7; border-color:#38bdf8; color:#fff; font-weight:700;">Crear y Subir Archivos</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal 2: Registrar Reparación Resuelta (Memoria Estadística) -->
+  <div class="modal-backdrop" id="repairModalBackdrop">
+    <div class="modal-box">
+      <div class="modal-header">
+        <span style="color:#22c55e;">💾 Guardar Reparación Resuelta en Memoria Estadística</span>
+        <button onclick="closeRecordRepairModal()" style="border:none; background:transparent; color:#94a3b8; font-size:16px;">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color:#94a3b8; margin-bottom:12px; font-size:12px;">
+          Esta información alimentará el reordenamiento predictivo del Stepper para que el próximo técnico resuelva esta falla más rápido.
+        </p>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div>
+            <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Placa / Modelo:</label>
+            <input type="text" id="repBoardId" style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+          </div>
+          <div>
+            <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Clave del Síntoma:</label>
+            <input type="text" id="repSymptomKey" placeholder="ej. NO_POWER_200MA o PPBUS_G3H_MISSING" style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div>
+              <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Componente Defectuoso:</label>
+              <input type="text" id="repFaultyComp" placeholder="ej. C7513" style="width:100%; background:#090d16; border:1px solid #334155; color:#f87171; font-weight:700; padding:6px 10px; border-radius:6px; font-size:12px;" />
+            </div>
+            <div>
+              <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Tipo de Falla:</label>
+              <select id="repFaultType" style="width:100%; background:#090d16; border:1px solid #334155; color:#38bdf8; padding:6px 10px; border-radius:6px; font-size:12px;">
+                <option value="SHORT_TO_GND">Cortocircuito a GND</option>
+                <option value="OPEN_CIRCUIT">Circuito Abierto (Fusible/R)</option>
+                <option value="NO_ENABLE">Falta Habilitación (EN/PGOOD)</option>
+                <option value="IC_FAILURE">Falla Interna de CI</option>
+                <option value="PCH_DAMAGE">Daño en PCH/CPU</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <div>
+              <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Impedancia Medida (Ω):</label>
+              <input type="number" step="0.1" id="repImpedance" placeholder="ej. 0.4" style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+            </div>
+            <div>
+              <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Voltaje Medido (V):</label>
+              <input type="number" step="0.1" id="repVoltage" placeholder="ej. 0.0" style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;" />
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px; color:#cbd5e1; display:block; margin-bottom:2px;">Notas Técnicas / Solución:</label>
+            <textarea id="repNotes" rows="2" placeholder="ej. Se reemplazó C7513 por uno de 10uF 25V y se restableció PPBUS_G3H a 12.6V." style="width:100%; background:#090d16; border:1px solid #334155; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px;"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="closeRecordRepairModal()">Cancelar</button>
+        <button onclick="submitRecordRepair()" style="background:#15803d; border-color:#22c55e; color:#fff; font-weight:700;">Guardar Reparación</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

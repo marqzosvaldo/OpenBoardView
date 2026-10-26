@@ -193,9 +193,9 @@ public class BoardDiagnosticsTools
         return simResult;
     }
 
-    [Description("Inicia el Modo Debugger Paso a Paso (Laberinto Secuencial) para seguir cómo viaja la línea eléctrica por el circuito ante síntomas como 'no carga', 'sin luz magsafe', 'sin backlight' o cualquier red, permitiendo avanzar nodo por nodo o marcar dónde se bloquea el voltaje.")]
+    [Description("Inicia el Modo Debugger Paso a Paso (Laberinto Secuencial) para seguir cómo viaja la señal o voltaje por el circuito ante cualquier síntoma en lenguaje natural (ej. 'los puertos usb no funcionan', 'no carga', 'sin video', 'sin audio') o identificador de red (ej. 'PPBUS_G3H', 'PPDCIN_USBC_AON', 'PP3V8_AON'). Permite avanzar nodo por nodo o marcar dónde se bloquea el voltaje.")]
     public async Task<MazeTraceResultDto> StartCircuitMazeDebuggerAsync(
-        [Description("Síntoma o línea a rastrear paso a paso, ej. 'no carga', 'sin luz verde magsafe', 'sin backlight' o 'PPBUS_G3H'.")] string symptomOrNet,
+        [Description("Síntoma o línea a rastrear paso a paso, ej. 'los puertos usb no funcionan', 'sin backlight', 'no enciende' o una red como 'PPDCIN_USBC_AON'.")] string symptomOrNet,
         [Description("Número de paso opcional (1 a 9) donde el técnico reporta que se cayó el voltaje a 0V (Breakpoint/Muro).")] int? blockedAtStepNumber = null)
     {
         var trace = _mazeDebugger.BuildTrace(new MazeTraceRequestDto
@@ -206,28 +206,42 @@ public class BoardDiagnosticsTools
         });
 
         _context.LastMazeTrace = trace;
-        var activeNode = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) ?? trace.Steps.First();
+        var activeNode = trace.Steps.FirstOrDefault(s => s.StepNumber == trace.CurrentStepNumber) 
+                         ?? trace.Steps.FirstOrDefault();
 
-        string primaryNet = !string.IsNullOrWhiteSpace(trace.TargetNet) ? trace.TargetNet : activeNode.OutputNet;
+        string primaryNet = !string.IsNullOrWhiteSpace(trace.TargetNet) 
+            ? trace.TargetNet 
+            : (activeNode?.OutputNet ?? _graph.GetBoardMasterPowerRail());
 
-        var wsPayload = new ObvUiCommandPayload(
-            Action: "maze_debugger",
-            Component: activeNode.ComponentId,
-            Net: primaryNet,
-            Quadrant: activeNode.Quadrant,
-            X: activeNode.X,
-            Y: activeNode.Y,
-            Message: trace.OverallDiagnosis,
-            MazeTrace: trace
-        );
+        if (activeNode != null)
+        {
+            var wsPayload = new ObvUiCommandPayload(
+                Action: "maze_debugger",
+                Component: activeNode.ComponentId,
+                Net: primaryNet,
+                Quadrant: activeNode.Quadrant,
+                X: activeNode.X,
+                Y: activeNode.Y,
+                Message: trace.OverallDiagnosis,
+                MazeTrace: trace
+            );
 
-        await _wsServer.BroadcastCommandAsync(wsPayload);
-        _context.SentUiCommands.Add(wsPayload);
-        _context.RegisterToolCall(
-            nameof(StartCircuitMazeDebuggerAsync),
-            net: primaryNet,
-            component: activeNode.ComponentId,
-            quadrant: activeNode.Quadrant);
+            await _wsServer.BroadcastCommandAsync(wsPayload);
+            _context.SentUiCommands.Add(wsPayload);
+            _context.RegisterToolCall(
+                nameof(StartCircuitMazeDebuggerAsync),
+                net: primaryNet,
+                component: activeNode.ComponentId,
+                quadrant: activeNode.Quadrant);
+        }
+        else
+        {
+            _context.RegisterToolCall(
+                nameof(StartCircuitMazeDebuggerAsync),
+                net: primaryNet,
+                component: "N/A",
+                quadrant: "Q1");
+        }
 
         return trace;
     }

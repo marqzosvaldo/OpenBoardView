@@ -1,0 +1,83 @@
+{
+  "family": "apple-820-02757-m3",
+  "description": "Flujos de diagnóstico curados para Apple MacBook Pro 14 A2918 M3 2023 (820-02757). Incluye árbol de conmutación tri-fásica PP3V8_AON y umbrales de seguridad en frío.",
+  "boardMatch": [ "820-02757", "A2918", "X2482" ],
+  "flows": [
+    {
+      "id": "PP3V8_AON_MISSING",
+      "targetNet": "PP3V8_AON",
+      "title": "Laberinto de Stand-by: PP3V8_AON (Equipo congelado en 5V / 30mA)",
+      "symptom": "Equipo no enciende, congelado en 5V / 30mA (Sin negociación USB-PD a 20V), PP3V8_AON en 0V.",
+      "keywords": [ "pp3v8_aon", "3v8", "5v", "30ma", "m3", "a2918", "no enciende", "lr503", "l5800", "u5700", "p3v8" ],
+      "steps": [
+        {
+          "component": "LR503",
+          "stage": "1. Bobina de Filtro Principal de Salida (3.80V Always-On)",
+          "inputNet": "PP3V8_AON",
+          "outputNet": "PP3V8_CODEC_VP",
+          "expectedVoltage": 3.80,
+          "voltageSource": "curated",
+          "pinToMeasure": "Pin 1 de LR503 (Cuadrante Q2, BOTTOM) [Pág. Esquemático 57]",
+          "howItWorks": "Prueba inicial de presencia del riel Always-On de 3.8V que energiza el circuito de audio y periféricos.",
+          "failDiagnosis": "0V en PP3V8_AON. Si la impedancia a tierra es < 50 Ω, existe un corto a tierra. Si es > 1 kΩ, falta habilitación del regulador U5700 (NO inyectar voltaje)."
+        },
+        {
+          "component": "L5800",
+          "stage": "2. Fase 1 del Conversor Buck Tri-Fásico (Renesas RAA225501)",
+          "inputNet": "P3V8AON_VSW1",
+          "outputNet": "PP3V8AON_PH1",
+          "expectedVoltage": 3.80,
+          "voltageSource": "curated",
+          "pinToMeasure": "Pin 2 de L5800 (Cuadrante Q3, TOP) [Pág. Esquemático 58]",
+          "howItWorks": "Fase 1 del conversor Buck tri-fásico impulsado por U5700. Convierte PPBUS_AON (~12.6V) a 3.80V.",
+          "failDiagnosis": "Bobina L5800 abierta o conmutación fallida en Fase 1 del controlador U5700."
+        },
+        {
+          "component": "L5820",
+          "stage": "3. Fase 2 del Conversor Buck Tri-Fásico (Renesas RAA225501)",
+          "inputNet": "P3V8AON_VSW2",
+          "outputNet": "PP3V8AON_PH2",
+          "expectedVoltage": 3.80,
+          "voltageSource": "curated",
+          "pinToMeasure": "Pin 2 de L5820 (Cuadrante Q3, TOP) [Pág. Esquemático 58]",
+          "howItWorks": "Fase 2 del conversor Buck tri-fásico impulsado por U5700.",
+          "failDiagnosis": "Bobina L5820 abierta o conmutación fallida en Fase 2 de U5700."
+        },
+        {
+          "component": "L5840",
+          "stage": "4. Fase 3 del Conversor Buck Tri-Fásico (Renesas RAA225501)",
+          "inputNet": "P3V8AON_VSW3",
+          "outputNet": "PP3V8AON_PH3",
+          "expectedVoltage": 3.80,
+          "voltageSource": "curated",
+          "pinToMeasure": "Pin 2 de L5840 (Cuadrante Q4, TOP) [Pág. Esquemático 58]",
+          "howItWorks": "Fase 3 del conversor Buck tri-fásico impulsado por U5700.",
+          "failDiagnosis": "Bobina L5840 abierta o conmutación fallida en Fase 3 de U5700."
+        },
+        {
+          "component": "R5156",
+          "stage": "5. Señal de Detección del Sistema (SYS_DETECT)",
+          "inputNet": "PP3V8_AON",
+          "outputNet": "SYS_DETECT",
+          "expectedVoltage": 3.80,
+          "voltageSource": "curated",
+          "pinToMeasure": "Pin 1 de R5156 (Cuadrante Q4, TOP) [Pág. Esquemático 52]",
+          "howItWorks": "Señal de presencia del sistema requerida por el Charger U5200 y el PMU para habilitar la secuencia.",
+          "failDiagnosis": "Resistencia R5156 desvalorizada o línea SYS_DETECT en corto a tierra."
+        },
+        {
+          "component": "R5800",
+          "stage": "6. Señal de Habilitación de Potencia (P3V8AON_PWR_EN)",
+          "inputNet": "P3V8AON_PWR_EN_PMU",
+          "outputNet": "P3V8AON_PWR_EN",
+          "expectedVoltage": 1.80,
+          "expectedReading": "1.80 V - 3.30 V",
+          "voltageSource": "curated",
+          "pinToMeasure": "Pin 2 de R5800 (Cuadrante Q3, TOP) [Pág. Esquemático 57]",
+          "howItWorks": "Habilitación de control enviada desde el MPMU U8100 hacia el pin de activación del regulador U5700.",
+          "failDiagnosis": "Si mide 0.00V, el MPMU U8100 no está emitiendo la orden de encendido. U5700 está apagado legítimamente por falta de orden del PMU."
+        }
+      ]
+    }
+  ]
+}

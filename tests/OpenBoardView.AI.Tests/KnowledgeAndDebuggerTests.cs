@@ -291,6 +291,27 @@ public class MazeDebuggerTests : IClassFixture<SampleBoardFixture>
         var extracted = Sample().ExtractTargetNetFromQuery(rawQuery);
         Assert.Equal(expectedNet, extracted);
     }
+
+    [Theory]
+    [InlineData("los puertos usb no funcionan")]
+    [InlineData("el audio no suena por los parlantes")]
+    [InlineData("tengo un corto en la linea de 3.3v")]
+    [InlineData("falla general desconocida, el equipo no hace nada")]
+    public void NaturalLanguageQueries_NeverReturnZeroStepsOrThrow(string naturalQuery)
+    {
+        var trace = Sample().BuildTrace(new MazeTraceRequestDto { QueryOrSymptom = naturalQuery });
+        Assert.NotNull(trace);
+        Assert.NotEmpty(trace.Steps);
+        Assert.False(string.IsNullOrWhiteSpace(trace.TargetNet));
+        Assert.NotNull(trace.OverallDiagnosis);
+    }
+
+    [Fact]
+    public void BoardMasterPowerRail_IsDynamicallyIdentified()
+    {
+        var masterRail = _fx.Graph.GetBoardMasterPowerRail();
+        Assert.Equal("PPBUS_G3H", masterRail);
+    }
 }
 
 public class SchematicPdfExtractionTests : IClassFixture<SampleBoardFixture>

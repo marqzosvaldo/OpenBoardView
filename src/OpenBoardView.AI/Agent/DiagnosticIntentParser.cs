@@ -29,17 +29,18 @@ public static class DiagnosticIntentParser
                                 (lower.Contains("simula") && lower.Contains("corto"));
         string defaultMode = isShortInjection ? "SHORT_INJECTION" : "DECISION_TREE";
 
-        // 1. Coincidencia prioritaria con PPVCORE_S0_CPU (Alimentación VCORE del Procesador)
-        if (lower.Contains("ppvcore_s0_cpu") ||
-            lower.Contains("ppvcore") ||
-            lower.Contains("vcore") ||
-            lower.Contains("u7400") ||
-            lower.Contains("isl95831") ||
-            lower.Contains("l7510") ||
-            lower.Contains("l7520") ||
-            lower.Contains("cpu_vr_en") ||
-            lower.Contains("cpuimvp_vr_on") ||
-            (lower.Contains("all_sys_pwrgd") && (lower.Contains("cpu") || lower.Contains("r7402") || lower.Contains("q7950"))))
+        // 1. Coincidencia con PPVCORE_S0_CPU si la placa tiene esa red o regulador U7400 (Intel)
+        if ((graph.NetExists("PPVCORE_S0_CPU") || graph.GetComponentDetails("U7400") != null) &&
+            (lower.Contains("ppvcore_s0_cpu") ||
+             lower.Contains("ppvcore") ||
+             lower.Contains("vcore") ||
+             lower.Contains("u7400") ||
+             lower.Contains("isl95831") ||
+             lower.Contains("l7510") ||
+             lower.Contains("l7520") ||
+             lower.Contains("cpu_vr_en") ||
+             lower.Contains("cpuimvp_vr_on") ||
+             (lower.Contains("all_sys_pwrgd") && (lower.Contains("cpu") || lower.Contains("r7402") || lower.Contains("q7950")))))
         {
             return new DiagnosticIntentDto(
                 SymptomId: "CPU_VCORE_ABSENT",
@@ -49,16 +50,17 @@ public static class DiagnosticIntentParser
                 DiagnosticMode: defaultMode);
         }
 
-        // 2. Coincidencia con Árbol de Decisión PP5V_S3
-        if (lower.Contains("pp5v_s3") ||
-            lower.Contains("5v_s3") ||
-            lower.Contains("p5vs3") ||
-            lower.Contains("l7260") ||
-            lower.Contains("c6213") ||
-            lower.Contains("q7221") ||
-            lower.Contains("q7911") ||
-            lower.Contains("pm_slp_s4_l") ||
-            lower.Contains("u7200"))
+        // 2. Coincidencia con Árbol de Decisión PP5V_S3 si la placa tiene esa red o U7200
+        if ((graph.NetExists("PP5V_S3") || graph.GetComponentDetails("U7200") != null) &&
+            (lower.Contains("pp5v_s3") ||
+             lower.Contains("5v_s3") ||
+             lower.Contains("p5vs3") ||
+             lower.Contains("l7260") ||
+             lower.Contains("c6213") ||
+             lower.Contains("q7221") ||
+             lower.Contains("q7911") ||
+             lower.Contains("pm_slp_s4_l") ||
+             lower.Contains("u7200")))
         {
             return new DiagnosticIntentDto(
                 SymptomId: "PP5V_S3_DIAGNOSTIC",
@@ -74,7 +76,7 @@ public static class DiagnosticIntentParser
         {
             string primaryNet = !string.IsNullOrWhiteSpace(matchedFlow.TargetNet)
                 ? matchedFlow.TargetNet
-                : (matchedFlow.Steps.FirstOrDefault()?.OutputNet ?? "PPBUS_G3H");
+                : (matchedFlow.Steps.FirstOrDefault()?.OutputNet ?? graph.GetBoardMasterPowerRail());
 
             var secondaryNets = matchedFlow.Steps
                 .SelectMany(s => new[] { s.InputNet, s.OutputNet })
@@ -109,7 +111,7 @@ public static class DiagnosticIntentParser
 
         // 4. Extracción dinámica desde el grafo .brd
         string? extractedNet = mazeDebugger.ExtractTargetNetFromQuery(prompt);
-        string resolvedPrimaryNet = extractedNet ?? "PPBUS_G3H";
+        string resolvedPrimaryNet = !string.IsNullOrWhiteSpace(extractedNet) ? extractedNet : graph.GetBoardMasterPowerRail();
 
         var hops = graph.GetUpstreamPath(null, resolvedPrimaryNet, maxDepth: 2);
         var dynSecondaryNets = hops

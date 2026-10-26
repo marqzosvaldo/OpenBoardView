@@ -8,7 +8,8 @@ namespace OpenBoardView.AI.Agent;
 
 /// <summary>
 /// Adaptador IChatClient para Google Gemini (v1beta) en .NET 10 con soporte nativo para Function Calling y Streaming SSE.
-/// Portado y adaptado de la arquitectura de Clínica Esencial.
+/// Incluye cascada resiliente multi-modelo, timeout preventivo de 15s por intento, preservación estricta de thoughtSignature
+/// y afinidad de modelo exitoso para llamadas con herramientas de dos turnos.
 /// </summary>
 public class GeminiChatClient : IChatClient
 {
@@ -16,12 +17,14 @@ public class GeminiChatClient : IChatClient
     private readonly string _apiKey;
     private readonly string _model;
     private readonly ChatClientMetadata _metadata;
+    private string? _lastWorkingModel;
+    private readonly Dictionary<string, string> _thoughtSignaturesByTool = new();
 
-    public GeminiChatClient(HttpClient httpClient, string apiKey, string model = "gemini-3.1-flash-lite")
+    public GeminiChatClient(HttpClient httpClient, string apiKey, string model = "gemini-3.5-flash")
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _apiKey = apiKey ?? throw new ArgumentNullException(nameof(apiKey));
-        _model = string.IsNullOrWhiteSpace(model) ? "gemini-2.0-flash" : model;
+        _model = string.IsNullOrWhiteSpace(model) ? "gemini-3.5-flash" : model;
         _metadata = new ChatClientMetadata("GoogleGemini", new Uri("https://generativelanguage.googleapis.com"), _model);
     }
 
@@ -33,27 +36,88 @@ public class GeminiChatClient : IChatClient
         return null;
     }
 
+    private List<string> ObtenerModelosCandidatos()
+    {
+        var candidateModels = new List<string>();
+        // Si ya un modelo tuvo éxito en esta sesión/turno previo, priorizarlo para mantener coherencia de thoughtSignature
+        if (!string.IsNullOrWhiteSpace(_lastWorkingModel))
+        {
+            candidateModels.Add(_lastWorkingModel);
+        }
+        if (!candidateModels.Contains(_model, StringComparer.OrdinalIgnoreCase))
+        {
+            candidateModels.Add(_model);
+        }
+        // Modelos probados empíricamente en orden de latencia (< 1s a 3s)
+        foreach (var fallback in new[] { "gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-flash-latest", "gemini-3.8-flash" })
+        {
+            if (!candidateModels.Contains(fallback, StringComparer.OrdinalIgnoreCase))
+                candidateModels.Add(fallback);
+        }
+        return candidateModels;
+    }
+
     public async Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> chatMessages,
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:generateContent?key={_apiKey}";
         var requestPayload = ConstruirPayloadGemini(chatMessages, options);
+        var jsonPayload = requestPayload.ToJsonString();
 
-        var content = new StringContent(requestPayload.ToJsonString(), Encoding.UTF8, "application/json");
-        using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        var candidateModels = ObtenerModelosCandidatos();
+        HttpResponseMessage? lastResponse = null;
+        string lastErrorBody = string.Empty;
+
+        for (int attempt = 0; attempt < candidateModels.Count; attempt++)
         {
-            var err = await response.Content.ReadAsStringAsync(cancellationToken);
-            Console.WriteLine($"[GeminiChatClient Error] {response.StatusCode}: {err}");
-            response.EnsureSuccessStatusCode();
+            var currentModel = candidateModels[attempt];
+            var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{currentModel}:generateContent?key={_apiKey}";
+
+            try
+            {
+                using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                attemptCts.CancelAfter(TimeSpan.FromSeconds(15));
+
+                using var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                lastResponse = await _httpClient.PostAsync(endpoint, content, attemptCts.Token);
+
+                if (lastResponse.IsSuccessStatusCode)
+                {
+                    _lastWorkingModel = currentModel;
+                    var responseJson = await lastResponse.Content.ReadAsStringAsync(cancellationToken);
+                    using var doc = JsonDocument.Parse(responseJson);
+                    return ParsearRespuestaGemini(doc.RootElement);
+                }
+
+                lastErrorBody = await lastResponse.Content.ReadAsStringAsync(cancellationToken);
+                int statusCode = (int)lastResponse.StatusCode;
+                Console.WriteLine($"[GeminiChatClient Warning] Modelo '{currentModel}' devolvió {lastResponse.StatusCode} ({statusCode}): {lastErrorBody}");
+
+                // Si es sobrecarga (503), rate-limit (429), error de schema (400, 404) o 5xx, conmutar al siguiente modelo
+                if ((statusCode is 503 or 429 or 500 or 502 or 504 or 404 or 400) && attempt < candidateModels.Count - 1)
+                {
+                    await Task.Delay(250 * (attempt + 1), cancellationToken);
+                    continue;
+                }
+
+                lastResponse.EnsureSuccessStatusCode();
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine($"[GeminiChatClient Warning] Modelo '{currentModel}' excedió el timeout de 15s. Conmutando al siguiente modelo en cascada...");
+                if (attempt < candidateModels.Count - 1) continue;
+                throw new TimeoutException($"Todos los modelos de Gemini excedieron el tiempo de espera.");
+            }
+            catch (HttpRequestException ex) when (attempt < candidateModels.Count - 1)
+            {
+                Console.WriteLine($"[GeminiChatClient Warning] Modelo '{currentModel}' fallo de red ({ex.Message}). Conmutando...");
+                continue;
+            }
         }
 
-        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        using var doc = JsonDocument.Parse(responseJson);
-
-        return ParsearRespuestaGemini(doc.RootElement);
+        lastResponse?.EnsureSuccessStatusCode();
+        throw new HttpRequestException($"Error al invocar Gemini API: {lastErrorBody}");
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
@@ -61,14 +125,53 @@ public class GeminiChatClient : IChatClient
         ChatOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{_model}:streamGenerateContent?key={_apiKey}&alt=sse";
+        var candidateModels = ObtenerModelosCandidatos();
         var requestPayload = ConstruirPayloadGemini(chatMessages, options);
+        var jsonPayload = requestPayload.ToJsonString();
 
-        var content = new StringContent(requestPayload.ToJsonString(), Encoding.UTF8, "application/json");
-        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = content };
-        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        HttpResponseMessage? response = null;
+        for (int attempt = 0; attempt < candidateModels.Count; attempt++)
+        {
+            var currentModel = candidateModels[attempt];
+            var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{currentModel}:streamGenerateContent?key={_apiKey}&alt=sse";
 
+            try
+            {
+                using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                attemptCts.CancelAfter(TimeSpan.FromSeconds(15));
+
+                var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = content };
+                response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _lastWorkingModel = currentModel;
+                    break;
+                }
+
+                int statusCode = (int)response.StatusCode;
+                if ((statusCode is 503 or 429 or 500 or 502 or 504 or 404 or 400) && attempt < candidateModels.Count - 1)
+                {
+                    await Task.Delay(250 * (attempt + 1), cancellationToken);
+                    continue;
+                }
+
+                response.EnsureSuccessStatusCode();
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                Console.WriteLine($"[GeminiChatClient Warning] Streaming en '{currentModel}' excedió timeout de 15s. Conmutando...");
+                if (attempt < candidateModels.Count - 1) continue;
+                throw;
+            }
+            catch (HttpRequestException) when (attempt < candidateModels.Count - 1)
+            {
+                continue;
+            }
+        }
+
+        response!.EnsureSuccessStatusCode();
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream, Encoding.UTF8);
 
@@ -108,7 +211,9 @@ public class GeminiChatClient : IChatClient
         var contentsArray = new JsonArray();
         string? systemInstruction = null;
 
-        foreach (var msg in messages)
+        var messageList = messages.ToList();
+
+        foreach (var msg in messageList)
         {
             if (msg.Role == ChatRole.System)
             {
@@ -150,12 +255,23 @@ public class GeminiChatClient : IChatClient
                         ["functionCall"] = funcCall
                     };
 
+                    // Inyectar thoughtSignature original de Google si está disponible (requerido por Gemini 3)
+                    string? ts = null;
                     if (callContent.AdditionalProperties != null &&
                         (callContent.AdditionalProperties.TryGetValue("thoughtSignature", out var tsVal) ||
                          callContent.AdditionalProperties.TryGetValue("thought_signature", out tsVal)) &&
                         tsVal != null)
                     {
-                        partObj["thoughtSignature"] = tsVal.ToString();
+                        ts = tsVal.ToString();
+                    }
+                    else if (_thoughtSignaturesByTool.TryGetValue(callContent.Name, out var cachedTs))
+                    {
+                        ts = cachedTs;
+                    }
+
+                    if (!string.IsNullOrEmpty(ts))
+                    {
+                        partObj["thoughtSignature"] = ts;
                     }
 
                     partsArray.Add(partObj);
@@ -163,6 +279,15 @@ public class GeminiChatClient : IChatClient
                 else if (contentItem is FunctionResultContent resContent)
                 {
                     role = "user";
+
+                    // Resolver el nombre exacto de la herramienta original, evitando enviar call_id abstracto
+                    string functionName = messageList
+                        .SelectMany(m => m.Contents.OfType<FunctionCallContent>())
+                        .FirstOrDefault(fc => fc.CallId == resContent.CallId)?.Name
+                        ?? (resContent.CallId?.StartsWith("call_") == true
+                            ? messageList.SelectMany(m => m.Contents.OfType<FunctionCallContent>()).LastOrDefault()?.Name
+                            : resContent.CallId)
+                        ?? "UnknownFunction";
 
                     string rawJson = "null";
                     if (resContent.Result != null)
@@ -213,7 +338,7 @@ public class GeminiChatClient : IChatClient
 
                     var funcResp = new JsonObject
                     {
-                        ["name"] = resContent.CallId,
+                        ["name"] = functionName,
                         ["response"] = responseStruct
                     };
                     partsArray.Add(new JsonObject { ["functionResponse"] = funcResp });
@@ -273,18 +398,15 @@ public class GeminiChatClient : IChatClient
             }
         }
 
-        var generationConfig = new JsonObject
-        {
-            ["thinkingConfig"] = new JsonObject
-            {
-                ["thinkingBudget"] = 0
-            }
-        };
+        var generationConfig = new JsonObject();
         if (options?.Temperature.HasValue == true)
         {
             generationConfig["temperature"] = options.Temperature.Value;
         }
-        root["generationConfig"] = generationConfig;
+        if (generationConfig.Count > 0)
+        {
+            root["generationConfig"] = generationConfig;
+        }
 
         return root;
     }
@@ -294,6 +416,12 @@ public class GeminiChatClient : IChatClient
         if (node is JsonObject obj)
         {
             obj.Remove("$schema");
+            obj.Remove("additionalProperties");
+
+            if (obj.TryGetPropertyValue("default", out var defNode) && defNode == null)
+            {
+                obj.Remove("default");
+            }
 
             if (obj.TryGetPropertyValue("type", out var typeNode) && typeNode is JsonArray arr)
             {
@@ -362,15 +490,21 @@ public class GeminiChatClient : IChatClient
                         var callId = funcCallElem.TryGetProperty("id", out var idElem) ? idElem.GetString() ?? name : name;
                         var callContent = new FunctionCallContent(callId, name, argsDict);
 
+                        string? tsString = null;
                         if (part.TryGetProperty("thoughtSignature", out var tsElem))
                         {
-                            callContent.AdditionalProperties ??= new AdditionalPropertiesDictionary();
-                            callContent.AdditionalProperties["thoughtSignature"] = tsElem.GetString();
+                            tsString = tsElem.GetString();
                         }
                         else if (part.TryGetProperty("thought_signature", out var tsElem2))
                         {
+                            tsString = tsElem2.GetString();
+                        }
+
+                        if (!string.IsNullOrEmpty(tsString))
+                        {
                             callContent.AdditionalProperties ??= new AdditionalPropertiesDictionary();
-                            callContent.AdditionalProperties["thoughtSignature"] = tsElem2.GetString();
+                            callContent.AdditionalProperties["thoughtSignature"] = tsString;
+                            _thoughtSignaturesByTool[name] = tsString;
                         }
 
                         responseMessage.Contents.Add(callContent);
