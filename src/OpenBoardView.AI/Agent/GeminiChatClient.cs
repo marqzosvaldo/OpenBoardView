@@ -42,7 +42,7 @@ public class GeminiChatClient : IChatClient
         var jsonPayload = requestPayload.ToJsonString();
 
         var candidateModels = new List<string> { _model };
-        foreach (var fallbackModel in new[] { "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash" })
+        foreach (var fallbackModel in new[] { "gemini-flash-latest", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash-lite" })
         {
             if (!candidateModels.Contains(fallbackModel, StringComparer.OrdinalIgnoreCase))
                 candidateModels.Add(fallbackModel);
@@ -69,9 +69,10 @@ public class GeminiChatClient : IChatClient
             lastErrorBody = await lastResponse.Content.ReadAsStringAsync(cancellationToken);
             int statusCode = (int)lastResponse.StatusCode;
             Console.WriteLine($"[GeminiChatClient Warning] Modelo '{currentModel}' devolvió {lastResponse.StatusCode} ({statusCode}): {lastErrorBody}");
+            Console.WriteLine($"[GeminiChatClient Debug Payload]: {jsonPayload}");
 
-            // Si es sobrecarga temporal (503), cuota/rate-limit (429) o error 5xx o modelo no encontrado (404), intentar con el siguiente modelo
-            if (statusCode is 503 or 429 or 500 or 502 or 504 or 404 && attempt < candidateModels.Count - 1)
+            // Si es sobrecarga temporal (503), cuota/rate-limit (429), error de modelo/schema (400, 404) o 5xx, intentar con el siguiente modelo
+            if (statusCode is 503 or 429 or 500 or 502 or 504 or 404 or 400 && attempt < candidateModels.Count - 1)
             {
                 await Task.Delay(400 * (attempt + 1), cancellationToken);
                 continue;
@@ -90,7 +91,7 @@ public class GeminiChatClient : IChatClient
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var candidateModels = new List<string> { _model };
-        foreach (var fallbackModel in new[] { "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-2.0-flash" })
+        foreach (var fallbackModel in new[] { "gemini-flash-latest", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash-lite" })
         {
             if (!candidateModels.Contains(fallbackModel, StringComparer.OrdinalIgnoreCase))
                 candidateModels.Add(fallbackModel);
@@ -113,7 +114,7 @@ public class GeminiChatClient : IChatClient
                 break;
 
             int statusCode = (int)response.StatusCode;
-            if (statusCode is 503 or 429 or 500 or 502 or 504 or 404 && attempt < candidateModels.Count - 1)
+            if (statusCode is 503 or 429 or 500 or 502 or 504 or 404 or 400 && attempt < candidateModels.Count - 1)
             {
                 await Task.Delay(400 * (attempt + 1), cancellationToken);
                 continue;

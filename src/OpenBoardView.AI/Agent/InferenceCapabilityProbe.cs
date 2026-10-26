@@ -59,7 +59,7 @@ public class InferenceCapabilityProbe
         if (!string.IsNullOrWhiteSpace(_overrideModel))
             return _overrideModel;
 
-        return _config["AiProvider:Gemini:Model"] ?? "gemini-2.5-flash";
+        return _config["AiProvider:Gemini:Model"] ?? "gemini-flash-latest";
     }
 
     public string GetEffectiveGeminiApiKey()
@@ -149,12 +149,12 @@ public class InferenceCapabilityProbe
 
         // 2. TIER 2: Verificación de Google Gemini en la Nube
         var defaultCandidateGeminiModels = new List<string> { 
-            "gemini-2.5-flash", 
+            "gemini-flash-latest", 
+            "gemini-3.5-flash", 
             "gemini-3.1-flash-lite", 
-            "gemini-2.0-flash", 
-            "gemini-1.5-flash", 
-            "gemini-1.5-pro", 
-            "gemini-2.0-flash-lite" 
+            "gemini-flash-lite-latest", 
+            "gemini-3.5-flash-lite", 
+            "gemini-3.8-flash" 
         };
 
         var selectedGeminiModel = GetEffectiveModel();
