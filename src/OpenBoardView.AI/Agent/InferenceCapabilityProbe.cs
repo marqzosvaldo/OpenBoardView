@@ -22,7 +22,8 @@ public record InferenceCapabilityDto(
 /// <summary>
 /// Sondeador y detector dinámico de capacidades de hardware e inferencia de IA.
 /// Valida en tiempo real la conectividad con Ollama (local) y Google Gemini (nube con cascada).
-/// Soporta reintentos interactivos, actualización de API Key en caliente y conmutación de estado Verde/Rojo.
+/// Soporta cambio dinámico de modelos, reintentos interactivos, actualización de API Key en caliente
+/// y conmutación de estado Verde/Rojo.
 /// </summary>
 public class InferenceCapabilityProbe
 {
@@ -31,6 +32,7 @@ public class InferenceCapabilityProbe
     private InferenceCapabilityDto? _cachedStatus;
     private DateTime _lastProbeTime = DateTime.MinValue;
     private string? _overrideGeminiKey;
+    private string? _overrideModel;
 
     public InferenceCapabilityProbe(HttpClient httpClient, IConfiguration config)
     {
@@ -41,8 +43,23 @@ public class InferenceCapabilityProbe
     public void SetGeminiApiKey(string newKey)
     {
         _overrideGeminiKey = newKey?.Trim();
-        _cachedStatus = null; // Invalidar caché de inmediato
+        _cachedStatus = null;
         _lastProbeTime = DateTime.MinValue;
+    }
+
+    public void SetSelectedModel(string modelName)
+    {
+        _overrideModel = modelName?.Trim();
+        _cachedStatus = null;
+        _lastProbeTime = DateTime.MinValue;
+    }
+
+    public string GetEffectiveModel()
+    {
+        if (!string.IsNullOrWhiteSpace(_overrideModel))
+            return _overrideModel;
+
+        return _config["AiProvider:Gemini:Model"] ?? "gemini-2.5-flash";
     }
 
     public string GetEffectiveGeminiApiKey()
@@ -100,9 +117,11 @@ public class InferenceCapabilityProbe
 
                     if (localModels.Count > 0)
                     {
-                        string selectedModel = localModels.FirstOrDefault(m => m.Contains(preferredLocalModel, StringComparison.OrdinalIgnoreCase))
-                                               ?? localModels.FirstOrDefault(m => m.Contains("qwen", StringComparison.OrdinalIgnoreCase) || m.Contains("llama", StringComparison.OrdinalIgnoreCase) || m.Contains("gemma", StringComparison.OrdinalIgnoreCase))
-                                               ?? localModels.First();
+                        string selectedModel = !string.IsNullOrWhiteSpace(_overrideModel) && localModels.Contains(_overrideModel, StringComparer.OrdinalIgnoreCase)
+                            ? _overrideModel
+                            : localModels.FirstOrDefault(m => m.Contains(preferredLocalModel, StringComparison.OrdinalIgnoreCase))
+                              ?? localModels.FirstOrDefault(m => m.Contains("qwen", StringComparison.OrdinalIgnoreCase) || m.Contains("llama", StringComparison.OrdinalIgnoreCase) || m.Contains("gemma", StringComparison.OrdinalIgnoreCase))
+                              ?? localModels.First();
 
                         _cachedStatus = new InferenceCapabilityDto(
                             ActiveTier: "Tier1_OllamaLocal",
@@ -129,11 +148,20 @@ public class InferenceCapabilityProbe
         }
 
         // 2. TIER 2: Verificación de Google Gemini en la Nube
-        var candidateGeminiModels = new List<string> { "gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.0-flash" };
-        var configuredGeminiModel = _config["AiProvider:Gemini:Model"] ?? "gemini-2.5-flash";
-        if (!candidateGeminiModels.Contains(configuredGeminiModel, StringComparer.OrdinalIgnoreCase))
+        var defaultCandidateGeminiModels = new List<string> { 
+            "gemini-2.5-flash", 
+            "gemini-3.1-flash-lite", 
+            "gemini-2.0-flash", 
+            "gemini-1.5-flash", 
+            "gemini-1.5-pro", 
+            "gemini-2.0-flash-lite" 
+        };
+
+        var selectedGeminiModel = GetEffectiveModel();
+        var candidateGeminiModels = new List<string>(defaultCandidateGeminiModels);
+        if (!candidateGeminiModels.Contains(selectedGeminiModel, StringComparer.OrdinalIgnoreCase))
         {
-            candidateGeminiModels.Insert(0, configuredGeminiModel);
+            candidateGeminiModels.Insert(0, selectedGeminiModel);
         }
 
         if (string.IsNullOrWhiteSpace(geminiKey) || geminiKey.StartsWith("TU_API_KEY") || geminiKey.StartsWith("YOUR_"))
@@ -142,15 +170,15 @@ public class InferenceCapabilityProbe
             _cachedStatus = new InferenceCapabilityDto(
                 ActiveTier: "Tier2_GeminiCloud",
                 Provider: "Gemini",
-                Model: candidateGeminiModels[0],
-                DisplayTitle: $"{candidateGeminiModels[0]}",
+                Model: selectedGeminiModel,
+                DisplayTitle: $"{selectedGeminiModel}",
                 BadgeColor: "#ef4444",
                 IsOnline: false,
                 IsAvailable: false,
                 IsLocal: false,
                 ErrorMessage: "API Key de Gemini no configurada o vacía",
                 AvailableModels: candidateGeminiModels,
-                Description: "API Key de Gemini no configurada. Haz clic en el chip para reintentar o conectarte."
+                Description: "API Key de Gemini no configurada. Haz clic en el chip para ingresar una clave o reintentar."
             );
             _lastProbeTime = DateTime.UtcNow;
             return _cachedStatus;
@@ -182,21 +210,28 @@ public class InferenceCapabilityProbe
                     }
                 }
 
-                var activeModel = candidateGeminiModels.FirstOrDefault(c => onlineModels.Any(o => o.Equals(c, StringComparison.OrdinalIgnoreCase)))
-                                  ?? candidateGeminiModels[0];
+                // Lista consolidada de modelos disponibles en Google
+                var mergedModels = new List<string>(candidateGeminiModels);
+                foreach (var om in onlineModels)
+                {
+                    if (om.Contains("gemini", StringComparison.OrdinalIgnoreCase) && !mergedModels.Contains(om, StringComparer.OrdinalIgnoreCase))
+                    {
+                        mergedModels.Add(om);
+                    }
+                }
 
                 _cachedStatus = new InferenceCapabilityDto(
                     ActiveTier: "Tier2_GeminiCloud",
                     Provider: "Gemini",
-                    Model: activeModel,
-                    DisplayTitle: activeModel,
+                    Model: selectedGeminiModel,
+                    DisplayTitle: selectedGeminiModel,
                     BadgeColor: "#22c55e",
                     IsOnline: true,
                     IsAvailable: true,
                     IsLocal: false,
                     ErrorMessage: null,
-                    AvailableModels: onlineModels.Count > 0 ? onlineModels : candidateGeminiModels,
-                    Description: $"Conexión activa con Google Gemini ({activeModel}). Respaldo en cascada disponible."
+                    AvailableModels: mergedModels,
+                    Description: $"Conexión activa con Google Gemini ({selectedGeminiModel})."
                 );
                 _lastProbeTime = DateTime.UtcNow;
                 return _cachedStatus;
@@ -213,8 +248,8 @@ public class InferenceCapabilityProbe
                 _cachedStatus = new InferenceCapabilityDto(
                     ActiveTier: "Tier2_GeminiCloud",
                     Provider: "Gemini",
-                    Model: candidateGeminiModels[0],
-                    DisplayTitle: $"{candidateGeminiModels[0]}",
+                    Model: selectedGeminiModel,
+                    DisplayTitle: $"{selectedGeminiModel}",
                     BadgeColor: "#ef4444",
                     IsOnline: false,
                     IsAvailable: false,
@@ -232,8 +267,8 @@ public class InferenceCapabilityProbe
             _cachedStatus = new InferenceCapabilityDto(
                 ActiveTier: "Tier2_GeminiCloud",
                 Provider: "Gemini",
-                Model: candidateGeminiModels[0],
-                DisplayTitle: $"{candidateGeminiModels[0]}",
+                Model: selectedGeminiModel,
+                DisplayTitle: $"{selectedGeminiModel}",
                 BadgeColor: "#ef4444",
                 IsOnline: false,
                 IsAvailable: false,
@@ -252,14 +287,14 @@ public class InferenceCapabilityProbe
         return _cachedStatus ?? new InferenceCapabilityDto(
             ActiveTier: "Tier2_GeminiCloud",
             Provider: "Gemini",
-            Model: "gemini-2.5-flash",
-            DisplayTitle: "gemini-2.5-flash",
+            Model: GetEffectiveModel(),
+            DisplayTitle: GetEffectiveModel(),
             BadgeColor: "#ef4444",
             IsOnline: false,
             IsAvailable: false,
             IsLocal: false,
             ErrorMessage: "No verificado",
-            AvailableModels: new List<string> { "gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.0-flash" },
+            AvailableModels: new List<string> { "gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro" },
             Description: "Estado no verificado. Presiona reintentar.");
     }
 }

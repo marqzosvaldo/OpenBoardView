@@ -380,6 +380,17 @@ app.MapPost("/api/agent/capabilities/apikey", async (ApiKeyUpdateRequest req, In
     return Results.Ok(status);
 });
 
+app.MapPost("/api/agent/capabilities/model", async (ModelSelectRequest req, InferenceCapabilityProbe probe) =>
+{
+    if (string.IsNullOrWhiteSpace(req.Model))
+    {
+        return Results.BadRequest(new { error = "El nombre del modelo no puede estar vacío" });
+    }
+    probe.SetSelectedModel(req.Model);
+    var status = await probe.ProbeCapabilitiesAsync(forceRefresh: true);
+    return Results.Ok(status);
+});
+
 app.MapPost("/api/agent/query", async (AgentQueryRequest request, BoardDiagnosticsService agent, CancellationToken ct) =>
 {
     var res = await agent.ProcessQueryAsync(request, ct);
@@ -407,3 +418,4 @@ app.MapControllers();
 app.Run();
 
 public record ApiKeyUpdateRequest(string ApiKey);
+public record ModelSelectRequest(string Model);
