@@ -1,6 +1,6 @@
-# 🔐 Guía de Configuración Segura de API Key (Sin Exposición en GitHub)
+# 🔐 Guía de Configuración Segura de API Key y Proveedores de IA
 
-Esta guía detalla los métodos recomendados para configurar y ejecutar **OpenBoardView AI** con tu API Key (Google Gemini u OpenAI) de forma 100% segura, asegurando que tus credenciales privadas **nunca** se suban ni se filtren al historial de Git ni a repositorios públicos de GitHub.
+Esta guía detalla los métodos recomendados para configurar y ejecutar **OpenBoardView AI** con tu API Key (Google Gemini u OpenAI) de forma 100% segura, asegurando que tus credenciales privadas **nunca** se filtren al historial de Git ni a repositorios públicos de GitHub.
 
 ---
 
@@ -19,13 +19,27 @@ Esto garantiza que cualquier archivo que use esos nombres nunca será rastreado 
 
 ---
 
-## 🚀 Métodos para Ejecutar el Proyecto con tu API Key
+## 🚀 4 Métodos Seguros para Configurar tu API Key
 
-Elige cualquiera de los siguientes **3 métodos seguros** según tu preferencia de flujo de trabajo:
+Elige cualquiera de los siguientes métodos según tu flujo de trabajo:
 
 ---
 
-### Método 1: Archivo Local Desacoplado (`appsettings.Local.json`) — *Recomendado*
+### Método 1: Al Vuelo desde la Interfaz Web (Popover en el Chat) — *El más rápido*
+
+No necesitas editar ningún archivo ni reiniciar el servidor:
+1. Abre tu navegador en **`http://127.0.0.1:5080`**.
+2. En la cabecera del chat, verás el chip de estado de la IA (`[ 🔴 Offline ]`).
+3. Haz clic sobre el chip o sobre el botón de reintentos (`🔄`): se desplegará una ventana emergente (*Popover*).
+4. Pega tu API Key de Google Gemini (inicia con `AIzaSy...`) y presiona **Guardar**.
+5. El sistema validará la clave al instante, conmutará el indicador a **🟢 Verde (Online)** y habilitará todas las herramientas de diagnóstico en tiempo real.
+
+> [!NOTE]  
+> La clave configurada por el popover se mantiene en la memoria del proceso del servidor durante la sesión de trabajo sin escribirse en archivos rastreados por Git.
+
+---
+
+### Método 2: Archivo Local Desacoplado (`appsettings.Local.json`) — *Recomendado para desarrollo persistente*
 
 El servidor .NET está programado para cargar de forma prioritaria el archivo local `appsettings.Local.json` si existe, sobreescribiendo los valores por defecto sin modificar el archivo base `appsettings.json` que rastrea Git.
 
@@ -34,8 +48,10 @@ El servidor .NET está programado para cargar de forma prioritaria el archivo lo
    cat << 'EOF' > src/OpenBoardView.AI/appsettings.Local.json
    {
      "AiProvider": {
+       "Provider": "Gemini",
        "Gemini": {
-         "ApiKey": "TU_API_KEY_AQUI"
+         "ApiKey": "TU_API_KEY_AQUI",
+         "Model": "gemini-3.5-flash"
        }
      }
    }
@@ -46,12 +62,12 @@ El servidor .NET está programado para cargar de forma prioritaria el archivo lo
    dotnet run --project src/OpenBoardView.AI/OpenBoardView.AI.csproj
    ```
 
-> [!TIP]
+> [!TIP]  
 > Dado que `appsettings.Local.json` está en `.gitignore`, puedes realizar commits y `git push` con total tranquilidad; tus credenciales se mantendrán únicamente en tu máquina local.
 
 ---
 
-### Método 2: Variable de Entorno en Terminal (En Memoria / Sin Archivos)
+### Método 3: Variable de Entorno en Terminal (En Memoria / Sin Archivos)
 
 Si prefieres no guardar tu API Key en ningún archivo del disco del proyecto, puedes inyectarla directamente en la sesión de tu terminal al momento de ejecutar:
 
@@ -68,7 +84,7 @@ GEMINI_API_KEY="TU_API_KEY_AQUI" dotnet run --project src/OpenBoardView.AI/OpenB
 
 ---
 
-### Método 3: Configuración Persistente en tu Perfil de Shell (`~/.zshrc`)
+### Método 4: Configuración Persistente en tu Perfil de Shell (`~/.zshrc` o `~/.bashrc`)
 
 Si utilizas OpenBoardView AI con frecuencia y quieres que cualquier terminal lo reconozca automáticamente sin tener que tipear la clave cada vez:
 
@@ -82,8 +98,14 @@ Si utilizas OpenBoardView AI con frecuencia y quieres que cualquier terminal lo 
    dotnet run --project src/OpenBoardView.AI/OpenBoardView.AI.csproj
    ```
 
-> [!NOTE]
-> `~/.zshrc` reside en tu carpeta de usuario personal (`/Users/tu_usuario/`), completamente fuera de la carpeta del repositorio de Git, por lo que es imposible que se filtre a GitHub.
+---
+
+## 🤖 Modelo Recomendado y Cascada Resiliente
+
+* **Modelo Predeterminado:** **`gemini-3.5-flash`**. Ofrece una latencia de ~1.5s a 3.0s con soporte nativo de llamadas a funciones (*Function Calling*).
+* **Cascada Automática con Timeout de 15s:** Si el modelo seleccionado experimenta congestión o demoras superiores a 15 segundos, el sistema conmuta automáticamente a los modelos rápidos de respaldo:
+  $$\text{gemini-3.5-flash} \longrightarrow \text{gemini-flash-lite-latest} \longrightarrow \text{gemini-3.5-flash-lite}$$
+* **Soporte Local 100% Offline (Ollama):** Si prefieres no usar internet, instala [Ollama](https://ollama.ai) (`ollama run qwen2.5-coder:7b`) y configura `"Provider": "Ollama"` en `appsettings.Local.json`. El sistema detectará la GPU local y operará sin conexión.
 
 ---
 
@@ -96,15 +118,5 @@ git status
 ```
 
 **Comprueba que:**
-- `appsettings.json` muestre únicamente el valor de plantilla (`"YOUR_GEMINI_API_KEY_HERE"`).
-- `appsettings.Local.json` **no** aparezca en la lista de archivos sin seguimiento (*Untracked files*).
-- Ningún archivo modificado contenga texto con tu clave privada.
-
----
-
-## 🌐 Comprobación del Servicio Activo
-
-Una vez ejecutado el servidor con cualquiera de los métodos anteriores:
-1. Abre tu navegador en: **`http://127.0.0.1:5080`**
-2. Envía cualquier consulta al chat del panel lateral (ejemplo: *"¿Está activo el motor IA?"*).
-3. El agente responderá directamente utilizando el modelo Gemini sin mostrar el aviso de API Key ausente.
+1. `appsettings.json` muestre únicamente el valor de plantilla (`"YOUR_GEMINI_API_KEY_HERE"`).
+2. `appsettings.Local.json` **no** aparezca en la lista de archivos sin seguimiento (*Untracked files*).
