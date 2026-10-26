@@ -777,11 +777,10 @@
           <div id="aiChatStatusChip" class="ai-chip offline" title="Estado de la IA. Selecciona un modelo o haz clic en reintentar">
             <span class="ai-chip-dot" onclick="onAiChipClicked()"></span>
             <select id="aiModelSelect" class="ai-model-select" onchange="onModelSelected(this.value)" onclick="event.stopPropagation()" title="Seleccionar modelo de IA para verificar">
-              <option value="gemini-flash-latest">gemini-flash-latest</option>
-              <option value="gemini-3.5-flash">gemini-3.5-flash</option>
-              <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+              <option value="gemini-3.5-flash">gemini-3.5-flash (Recomendado)</option>
               <option value="gemini-flash-lite-latest">gemini-flash-lite-latest</option>
               <option value="gemini-3.5-flash-lite">gemini-3.5-flash-lite</option>
+              <option value="gemini-flash-latest">gemini-flash-latest</option>
               <option value="gemini-3.8-flash">gemini-3.8-flash</option>
             </select>
             <span id="aiChipStatus" class="ai-chip-badge" onclick="onAiChipClicked()">Offline</span>
